@@ -1,0 +1,14 @@
+kanforge
+Copyright 2026 fx-xf
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+No third-party source code is included at this time. Ideas are credited to:
+- KAN: Liu et al., "KAN: Kolmogorov-Arnold Networks", arXiv:2404.19756
+  (pykan, MIT License).
+- efficient-kan by Blealtan (MIT License): the layer as a single matrix product.
+- FourierKAN by GistNoesis (MIT License): Fourier edge functions.
+- ChebyKAN by SynodicMonth: Chebyshev polynomials of tanh(x).
+
+Code borrowed later from permissively licensed projects will be listed here
+together with its original copyright and license.

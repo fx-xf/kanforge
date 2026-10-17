@@ -1,0 +1,27 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            extras: torch,test
+          - os: macos-14
+            extras: torch,mlx,test
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install CPU torch on Linux
+        if: runner.os == 'Linux'
+        run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[${{ matrix.extras }}]"
+      - run: python -m pytest -q
