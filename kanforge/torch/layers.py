@@ -16,7 +16,7 @@ from torch import nn
 
 from .. import regularization as reg
 from .._calculus import silu_derivative
-from .._layer import GridToolsMixin, basis_param_values, init_stds, mult_widths, resolve_groups
+from .._layer import GridToolsMixin, InterpretMixin, basis_param_values, init_stds, mult_widths, resolve_groups
 from ..bases import Basis, Rational, make_basis
 from ..kernels import plan_for
 from ..kernels.plan import AUTO_KINDS
@@ -25,7 +25,7 @@ from . import kernels as _kernels
 BACKENDS = ("auto", "ops", "kernel")
 
 
-class KANLinear(GridToolsMixin, nn.Module):
+class KANLinear(GridToolsMixin, InterpretMixin, nn.Module):
     """One KAN layer: y_o = sum_i s_oi * phi_oi(x_i) + sum_i w_oi * act(x_i) + b_o.
 
     Parameters (same names on every backend):
@@ -38,6 +38,8 @@ class KANLinear(GridToolsMixin, nn.Module):
     Buffers:
       ``basis_<name>``   basis state such as grids, ``(in, *shape)``: every input
                          has its own grid (``grid_ranges``, ``update_grid``)
+      ``edge_mask``, ``sym_code``, ``sym_params`` — pruning and symbolic edges
+                         (see ``InterpretMixin``, ``kanforge.interpret``)
 
     ``edge_dropout`` drops individual edge activations while training (DropKAN).
 
@@ -81,6 +83,17 @@ class KANLinear(GridToolsMixin, nn.Module):
             raise ValueError(f"backend must be one of {BACKENDS}")
         self.backend = backend
         self._grid_ranges = grid_ranges
+        self._init_kwargs = {
+            "basis": self.basis,
+            "bias": bias,
+            "base_activation": base_activation,
+            "groups": groups,
+            "edge_scale": edge_scale,
+            "coef_init": coef_init,
+            "coef_init_std": coef_init_std,
+            "edge_dropout": edge_dropout,
+            "backend": backend,
+        }
         init_stds(self.basis, in_features, out_features, coef_init, coef_init_std, base_activation is not None)
         self.coef = nn.Parameter(torch.empty(out_features, in_features, self.basis.size, **factory))
         if base_activation is not None:
@@ -95,6 +108,9 @@ class KANLinear(GridToolsMixin, nn.Module):
             self.edge_scale = nn.Parameter(torch.empty(out_features, in_features, **factory))
         else:
             self.register_parameter("edge_scale", None)
+        self.register_buffer("edge_mask", torch.empty(out_features, in_features, **factory))
+        self.register_buffer("sym_code", torch.empty(out_features, in_features, dtype=torch.int32, device=device))
+        self.register_buffer("sym_params", torch.empty(out_features, in_features, 4, **factory))
         self._trainable_names: list[str] = []
         self._buffer_names: list[str] = []
         self.reset_parameters()
@@ -126,6 +142,10 @@ class KANLinear(GridToolsMixin, nn.Module):
             nn.init.zeros_(self.bias)
         if self.edge_scale is not None:
             nn.init.ones_(self.edge_scale)
+        self.edge_mask.fill_(1.0)
+        self.sym_code.fill_(-1)
+        self.sym_params.zero_()
+        self._sym_codes = ()
         self._set_basis_state(*basis_param_values(self.basis, self.groups, self.in_features, self._grid_ranges))
 
     def basis_params(self) -> dict[str, torch.Tensor]:
@@ -140,9 +160,11 @@ class KANLinear(GridToolsMixin, nn.Module):
         return out
 
     def effective_coef(self) -> torch.Tensor:
-        if self.edge_scale is None:
-            return self.coef
-        return self.coef * self.edge_scale[..., None]
+        scale = self.edge_mask if self.edge_scale is None else self.edge_scale * self.edge_mask
+        return self.coef * scale[..., None]
+
+    def effective_base_weight(self) -> torch.Tensor | None:
+        return None if self.base_weight is None else self.base_weight * self.edge_mask
 
     # --- computation ------------------------------------------------------
 
@@ -159,7 +181,10 @@ class KANLinear(GridToolsMixin, nn.Module):
             # (..., in, n) -> (..., in*n) @ (in*n, out): one GEMM, as in efficient-kan.
             y = self.basis(x, self.basis_params()).flatten(-2) @ self.effective_coef().flatten(1).T
         if self.base_weight is not None:
-            y = y + F.linear(self.base_activation(x), self.base_weight)
+            y = y + F.linear(self.base_activation(x), self.effective_base_weight())
+        sym = self._symbolic_part(x)
+        if sym is not None:
+            y = y + sym.sum(-1)
         if self.bias is not None:
             y = y + self.bias
         return y
@@ -191,7 +216,11 @@ class KANLinear(GridToolsMixin, nn.Module):
                 base = silu_derivative(x, order)
             else:
                 raise NotImplementedError("analytic derivatives need base_activation=F.silu or None")
-            d = d + base[..., None, :] * self.base_weight
+            d = d + base[..., None, :] * self.effective_base_weight()
+        if self._sym_codes:
+            if order:
+                raise NotImplementedError("analytic derivatives of symbolic edges are not available; use autograd")
+            d = d + self._symbolic_part(x)
         return d
 
     # --- grid tools (GridToolsMixin) --------------------------------------
@@ -211,10 +240,42 @@ class KANLinear(GridToolsMixin, nn.Module):
             "buffers": {k: n(getattr(self, f"basis_{k}")) for k in self._buffer_names},
         }
 
+    def _get(self, name):
+        return getattr(self, name)
+
+    @torch.no_grad()
+    def _set(self, name, value) -> None:
+        t = getattr(self, name)
+        t.copy_(torch.as_tensor(np.asarray(value), dtype=t.dtype, device=t.device))
+
+    def _export_full(self) -> dict:
+        return {k: self._to_numpy(v) for k, v in {**dict(self.named_parameters(recurse=False)), **dict(self.named_buffers(recurse=False))}.items()} | {
+            k: None for k in ("base_weight", "bias", "edge_scale") if getattr(self, k) is None
+        }
+
+    @torch.no_grad()
+    def _import_full(self, state: dict) -> None:
+        for name, value in state.items():
+            t = getattr(self, name, None)
+            if value is None or t is None:
+                continue
+            if t.shape != value.shape:
+                raise ValueError(f"{name}: shape {value.shape} does not fit {tuple(t.shape)}")
+            t.copy_(torch.as_tensor(value, dtype=t.dtype, device=t.device))
+        self._refresh_symbolic()
+
+    def subset(self, out_idx=None, in_idx=None) -> KANLinear:
+        return InterpretMixin.subset(self, out_idx, in_idx).to(self.coef.device, self.coef.dtype)
+
+    def _load_from_state_dict(self, *args, **kwargs):
+        super()._load_from_state_dict(*args, **kwargs)
+        self._refresh_symbolic()
+
     @torch.no_grad()
     def _load_state(self, basis, coef, edge_scale, trainable, buffers) -> None:
         like = {"dtype": self.coef.dtype, "device": self.coef.device}
         self.basis = basis
+        self._init_kwargs["basis"] = basis
         self.coef = nn.Parameter(torch.as_tensor(coef, **like))
         if edge_scale is not None:
             self.edge_scale = nn.Parameter(torch.as_tensor(edge_scale, **like))
@@ -361,6 +422,14 @@ class MultKAN(nn.Sequential):
             layers.append(MultKANLinear(a_sum + a_mult, b_sum, b_mult, basis, arity=arity, **layer_kwargs))
         super().__init__(*layers)
         self.widths = list(widths)
+
+
+def rebuild_kan(layers: Sequence[KANLinear]) -> KAN:
+    """A ``KAN`` made of existing layers (used by pruning)."""
+    model = KAN.__new__(KAN)
+    nn.Sequential.__init__(model, *layers)
+    model.widths = [layers[0].in_features] + [layer.out_features for layer in layers]
+    return model
 
 
 def layer_inputs(model: nn.Module, x: torch.Tensor) -> list[tuple[KANLinear, torch.Tensor]]:

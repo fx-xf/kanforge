@@ -15,8 +15,10 @@ MultKAN layers; per-input grids, grid update / refinement and conversion
 between any bases, pykan regularisation, DropKAN, variance-preserving
 initialisation and exact conversion of MLPs; fused Metal kernels (PyTorch MPS,
 MLX) and Triton kernels (CUDA/ROCm) with derivatives of any order, up to 9x
-faster on Apple silicon — see [BENCHMARKS.md](BENCHMARKS.md). Interpretability
-and export are on the roadmap in [PLAN.md](PLAN.md).
+faster on Apple silicon — see [BENCHMARKS.md](BENCHMARKS.md); interpretability:
+tabulation, attribution, pruning, symbolic regression, formulas through SymPy
+and the kanpiler (formula -> KAN). Architecture blocks and export are on the
+roadmap in [PLAN.md](PLAN.md).
 
 | Family | Bases |
 | --- | --- |
@@ -67,6 +69,18 @@ from kanforge.mlx import KAN
 
 model = KAN([2, 5, 1], basis={"name": "bspline", "grid_size": 8, "order": 3})
 y = model(mx.random.uniform(shape=(64, 2)))
+```
+
+```python
+import sympy, torch
+from kanforge import interpret as ki
+
+pruned = ki.prune(model, x)                 # drop unimportant nodes and edges
+ki.auto_symbolic(pruned, x)                 # fit c*f(a*x+b)+d to every edge
+print(ki.symbolic_formula(pruned, ["x", "y"]))
+
+X, Y = sympy.symbols("x y")
+kan, col = ki.kanpile(sympy.exp(sympy.sin(sympy.pi * X) + Y**2), [X, Y])   # formula -> MultKAN
 ```
 
 ## Development

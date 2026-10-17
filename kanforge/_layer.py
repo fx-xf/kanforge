@@ -9,6 +9,7 @@ import numpy as np
 
 from . import grid as gridlib
 from .bases import Basis, make_basis
+from ._xp import namespace
 from .reference import silu
 
 COEF_INITS = ("normal", "zero", "variance", "lecun", "glorot")
@@ -188,3 +189,111 @@ class GridToolsMixin:
         src_buffers = st["buffers"] if old_ranges is not None else buffers
         xs = self._samples(x, src, src_buffers, 8 * max(new_basis.size, self.basis.size) + 64)
         self._refit_to(new_basis, trainable, buffers, xs, ridge)
+
+
+class InterpretMixin:
+    """Edge masks, symbolic edges and sub-layers, shared by the backends.
+
+    Buffers (always present, so state dicts stay compatible):
+      ``edge_mask``  ``(out, in)`` — 0 removes the spline and base part of an edge
+      ``sym_code``   ``(out, in)`` — library code of a symbolic edge, -1 for none
+      ``sym_params`` ``(out, in, 4)`` — (a, b, c, d) of c * f(a * x + b) + d
+
+    Backends implement ``_get(name)`` (backend array), ``_set(name, np_array)``,
+    ``_to_numpy(array)``, ``_export_full()`` / ``_import_full(dict)`` and keep
+    ``_init_kwargs`` (constructor arguments besides the sizes).
+    """
+
+    _sym_codes: tuple = ()
+
+    def _refresh_symbolic(self) -> None:
+        codes = np.unique(self._to_numpy(self._get("sym_code")).astype(int))
+        # object.__setattr__: MLX modules would store a tuple as a child entry
+        object.__setattr__(self, "_sym_codes", tuple(int(c) for c in codes if c >= 0))
+
+    def symbolic_edges(self) -> dict[tuple[int, int], tuple[str, tuple[float, float, float, float]]]:
+        """{(o, i): (function name, (a, b, c, d))} of the fixed edges."""
+        from .interpret.library import NAMES
+
+        code = self._to_numpy(self._get("sym_code")).astype(int)
+        params = self._to_numpy(self._get("sym_params"))
+        return {
+            (int(o), int(i)): (NAMES[code[o, i]], tuple(float(v) for v in params[o, i]))
+            for o, i in zip(*np.nonzero(code >= 0))
+        }
+
+    def fix_symbolic(self, o: int, i: int, name: str, params=(1.0, 0.0, 1.0, 0.0)) -> None:
+        """Replace edge (o, i) by c * f(a * x + b) + d; its spline and base parts are masked."""
+        from .interpret.library import CODES, get
+
+        get(name)
+        mask = self._to_numpy(self._get("edge_mask"))
+        code = self._to_numpy(self._get("sym_code")).astype(np.int32)
+        sp = self._to_numpy(self._get("sym_params"))
+        mask[o, i], code[o, i], sp[o, i] = 0.0, CODES[name], np.asarray(params, dtype=np.float64)
+        self._set("edge_mask", mask)
+        self._set("sym_code", code)
+        self._set("sym_params", sp)
+        self._refresh_symbolic()
+
+    def unfix_symbolic(self, o: int, i: int) -> None:
+        """Back to the learned edge (spline and base parts unmasked)."""
+        mask = self._to_numpy(self._get("edge_mask"))
+        code = self._to_numpy(self._get("sym_code")).astype(np.int32)
+        mask[o, i], code[o, i] = 1.0, -1
+        self._set("edge_mask", mask)
+        self._set("sym_code", code)
+        self._refresh_symbolic()
+
+    def set_edge_mask(self, mask) -> None:
+        """0 removes an edge (pruning); symbolic edges stay as they are."""
+        self._set("edge_mask", np.asarray(mask, dtype=np.float64))
+
+    def active_edges(self) -> np.ndarray:
+        """Boolean ``(out, in)``: learned (unmasked) or symbolic edges."""
+        return (self._to_numpy(self._get("edge_mask")) != 0) | (self._to_numpy(self._get("sym_code")) >= 0)
+
+    def _symbolic_part(self, x):
+        """Symbolic edges, ``(..., out, in)``, or None when there are none."""
+        if not self._sym_codes:
+            return None
+        from .interpret.library import SAFE_INPUT, get
+
+        xp = namespace(x)
+        code, p = self._get("sym_code"), self._get("sym_params")
+        a, b, c, d = p[..., 0], p[..., 1], p[..., 2], p[..., 3]
+        u = a * x[..., None, :] + b
+        zero = 0 * u
+        out = zero
+        for k in self._sym_codes:
+            sel = code == k
+            v = c * get(k).fn(xp.where(sel, u, zero + SAFE_INPUT)) + d
+            out = out + xp.where(sel, v, zero)
+        return out
+
+    def subset(self, out_idx=None, in_idx=None):
+        """A new layer with only the given outputs and inputs (pruning)."""
+        out_idx = np.arange(self.out_features) if out_idx is None else np.asarray(out_idx, dtype=int)
+        in_idx = np.arange(self.in_features) if in_idx is None else np.asarray(in_idx, dtype=int)
+        if self.groups not in (1, self.in_features) and len(in_idx) != self.in_features:
+            raise ValueError("inputs of a layer with grouped basis parameters cannot be removed")
+        st = self._export_full()
+        new_st = {}
+        for name, value in st.items():
+            if value is None:
+                new_st[name] = None
+            elif name in ("coef", "base_weight", "edge_scale", "edge_mask", "sym_code", "sym_params"):
+                new_st[name] = value[out_idx][:, in_idx]
+            elif name == "bias":
+                new_st[name] = value[out_idx]
+            elif name.startswith("basis_"):
+                per_input = value.shape[0] == self.in_features and self.groups != 1
+                new_st[name] = value[in_idx] if per_input or name[6:] in self._buffer_names else value
+            else:
+                new_st[name] = value
+        kwargs = dict(self._init_kwargs)
+        if kwargs.get("groups") not in (None, 1):
+            kwargs["groups"] = None if len(in_idx) == self.in_features else kwargs["groups"]
+        layer = type(self)(len(in_idx), len(out_idx), **kwargs)
+        layer._import_full(new_st)
+        return layer

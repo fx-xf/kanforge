@@ -15,7 +15,7 @@ from mlx import nn
 
 from .. import regularization as reg
 from .._calculus import silu_derivative
-from .._layer import GridToolsMixin, basis_param_values, init_stds, mult_widths, resolve_groups
+from .._layer import GridToolsMixin, InterpretMixin, basis_param_values, init_stds, mult_widths, resolve_groups
 from ..bases import Basis, Rational, make_basis
 from ..kernels import plan_for
 from ..kernels.plan import AUTO_KINDS
@@ -24,7 +24,7 @@ from . import kernels as _kernels
 BACKENDS = ("auto", "ops", "kernel")
 
 
-class KANLinear(GridToolsMixin, nn.Module):
+class KANLinear(GridToolsMixin, InterpretMixin, nn.Module):
     """One KAN layer: y_o = sum_i s_oi * phi_oi(x_i) + sum_i w_oi * act(x_i) + b_o.
 
     Parameter names and shapes match ``kanforge.torch.KANLinear``.
@@ -59,6 +59,17 @@ class KANLinear(GridToolsMixin, nn.Module):
         if backend not in BACKENDS:
             raise ValueError(f"backend must be one of {BACKENDS}")
         self.backend = backend
+        self._init_kwargs = {
+            "basis": self._basis,
+            "bias": bias,
+            "base_activation": base_activation,
+            "groups": groups,
+            "edge_scale": edge_scale,
+            "coef_init": coef_init,
+            "coef_init_std": coef_init_std,
+            "edge_dropout": edge_dropout,
+            "backend": backend,
+        }
         coef_std, base_std = init_stds(
             self._basis, in_features, out_features, coef_init, coef_init_std, base_activation is not None
         )
@@ -73,6 +84,11 @@ class KANLinear(GridToolsMixin, nn.Module):
             self.bias = mx.zeros((out_features,))
         if edge_scale:
             self.edge_scale = mx.ones((out_features, in_features))
+        self.edge_mask = mx.ones((out_features, in_features))
+        self.sym_code = mx.full((out_features, in_features), -1, dtype=mx.int32)
+        self.sym_params = mx.zeros((out_features, in_features, 4))
+        self.freeze(recurse=False, keys=["edge_mask", "sym_code", "sym_params"])
+        object.__setattr__(self, "_sym_codes", ())
         self._trainable_names: list[str] = []
         self._buffer_names: list[str] = []
         self._set_basis_state(*basis_param_values(self._basis, self.groups, in_features, grid_ranges))
@@ -102,9 +118,11 @@ class KANLinear(GridToolsMixin, nn.Module):
         return out
 
     def effective_coef(self) -> mx.array:
-        if "edge_scale" in self:
-            return self.coef * self.edge_scale[..., None]
-        return self.coef
+        scale = self.edge_scale * self.edge_mask if "edge_scale" in self else self.edge_mask
+        return self.coef * scale[..., None]
+
+    def effective_base_weight(self):
+        return self.base_weight * self.edge_mask if "base_weight" in self else None
 
     def __call__(self, x: mx.array) -> mx.array:
         if self.training and self.edge_dropout > 0:
@@ -119,7 +137,10 @@ class KANLinear(GridToolsMixin, nn.Module):
             phi = self._basis(x, self.basis_params())
             y = phi.reshape(*phi.shape[:-2], -1) @ self.effective_coef().reshape(self.out_features, -1).T
         if "base_weight" in self:
-            y = y + self._base_activation(x) @ self.base_weight.T
+            y = y + self._base_activation(x) @ self.effective_base_weight().T
+        sym = self._symbolic_part(x)
+        if sym is not None:
+            y = y + sym.sum(-1)
         if "bias" in self:
             y = y + self.bias
         return y
@@ -146,7 +167,11 @@ class KANLinear(GridToolsMixin, nn.Module):
                 base = silu_derivative(x, order)
             else:
                 raise NotImplementedError("analytic derivatives need base_activation=nn.silu or None")
-            d = d + base[..., None, :] * self.base_weight
+            d = d + base[..., None, :] * self.effective_base_weight()
+        if self._sym_codes:
+            if order:
+                raise NotImplementedError("analytic derivatives of symbolic edges are not available; use mx.grad")
+            d = d + self._symbolic_part(x)
         return d
 
     # --- grid tools (GridToolsMixin) --------------------------------------
@@ -163,8 +188,37 @@ class KANLinear(GridToolsMixin, nn.Module):
             "buffers": {k: self._to_numpy(self[f"basis_{k}"]) for k in self._buffer_names},
         }
 
+    def _get(self, name):
+        return self[name]
+
+    def _set(self, name, value) -> None:
+        dtype = mx.int32 if name == "sym_code" else mx.float32
+        self[name] = mx.array(np.asarray(value), dtype=dtype)
+
+    def _export_full(self) -> dict:
+        from mlx.utils import tree_flatten
+
+        st = {k: self._to_numpy(v) for k, v in tree_flatten(self.parameters()) if "." not in k}
+        return st | {k: None for k in ("base_weight", "bias", "edge_scale") if k not in self}
+
+    def _import_full(self, state: dict) -> None:
+        for name, value in state.items():
+            if value is None or name not in self:
+                continue
+            if tuple(self[name].shape) != value.shape:
+                raise ValueError(f"{name}: shape {value.shape} does not fit {tuple(self[name].shape)}")
+            self._set(name, value)
+        self._refresh_symbolic()
+
+    def update(self, parameters, *args, **kwargs):
+        out = super().update(parameters, *args, **kwargs)
+        if "sym_code" in parameters:
+            self._refresh_symbolic()
+        return out
+
     def _load_state(self, basis, coef, edge_scale, trainable, buffers) -> None:
         self._basis = basis
+        self._init_kwargs["basis"] = basis
         self.coef = mx.array(np.asarray(coef, dtype=np.float32))
         if edge_scale is not None:
             self.edge_scale = mx.array(np.asarray(edge_scale, dtype=np.float32))
@@ -298,6 +352,15 @@ class MultKAN(nn.Module):
         for layer in self.layers:
             x = layer(x)
         return x
+
+
+def rebuild_kan(layers) -> KAN:
+    """A ``KAN`` made of existing layers (used by pruning)."""
+    model = KAN.__new__(KAN)
+    nn.Module.__init__(model)
+    model.widths = [layers[0].in_features] + [layer.out_features for layer in layers]
+    model.layers = list(layers)
+    return model
 
 
 def layer_inputs(model, x: mx.array) -> list[tuple[KANLinear, mx.array]]:

@@ -19,6 +19,9 @@ No third-party source code is included at this time. Ideas are credited to:
   All implementations here are written from the papers' formulas.
 - pykan (MIT License): adaptive grids, grid extension, sparsity regularisation.
 - DropKAN by Ghaith81: dropout of edge activations.
+- pykan (MIT License): symbolic edges, auto_symbolic, attribution, pruning,
+  kanpiler and the contrastive (unsupervised) mode; TruKAN (MIT License):
+  fitting compiled edges by least squares.
 
 Code borrowed later from permissively licensed projects will be listed here
 together with its original copyright and license.
