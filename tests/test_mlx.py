@@ -58,3 +58,28 @@ def test_kan_fits_1d_function():
         opt.update(model, grads)
         mx.eval(model.parameters(), opt.state)
     assert loss.item() < 1e-3
+
+
+def test_edge_derivative_matches_mx_grad():
+    from cases import CASES
+
+    mx.random.seed(0)
+    layer = KANLinear(1, 1, CASES["mexican_hat"])
+    f = lambda x: layer(x[None, None])[0, 0]  # noqa: E731
+    x0 = mx.array(0.37)
+    with mx.stream(mx.cpu):
+        for order in (1, 2):
+            g = f
+            for _ in range(order):
+                g = mx.grad(g)
+            got = layer.edge_derivative(x0[None, None], order)[0, 0, 0]
+            np.testing.assert_allclose(np.array(got), np.array(g(x0)), rtol=1e-4, atol=1e-5)
+
+
+def test_multkan_and_grkan_shapes():
+    from kanforge.mlx import GRKAN, MultKAN
+
+    assert MultKAN([2, (2, 1), 1])(mx.zeros((5, 2))).shape == (5, 1)
+    layer = GRKAN(16, 8, groups=4)
+    assert layer.basis_numerator.shape == (4, 6) and "base_weight" not in layer
+    assert layer(mx.random.normal((3, 16))).shape == (3, 8)

@@ -9,6 +9,14 @@ No third-party source code is included at this time. Ideas are credited to:
 - efficient-kan by Blealtan (MIT License): the layer as a single matrix product.
 - FourierKAN by GistNoesis (MIT License): Fourier edge functions.
 - ChebyKAN by SynodicMonth: Chebyshev polynomials of tanh(x).
+- KAT by Adamdad (MIT License): group-rational KAN, variance-preserving init.
+- KAN 2.0 / pykan (MIT License): multiplication nodes (MultKAN).
+- TruKAN by alibayeh (MIT License): truncated power basis, ordered learnable knots.
+- KANLib by julianhoever (MIT License): per-edge spline scale.
+- FastKAN (Apache-2.0), FasterKAN (Apache-2.0), ReLU-KAN, Wav-KAN (MIT),
+  JacobiKAN, fKAN and rKAN (BSD-3-Clause), BSRBF-KAN, KAF, FCN-KAN,
+  Double-KANs, torch-conv-kan (MIT): the corresponding basis functions.
+  All implementations here are written from the papers' formulas.
 
 Code borrowed later from permissively licensed projects will be listed here
 together with its original copyright and license.

@@ -11,11 +11,20 @@ BASES = [BSpline(5, 3), Chebyshev(4), Fourier(3)]
 IDS = ["bspline", "chebyshev", "fourier"]
 
 
+def _usable(device):
+    # GitHub's macOS VMs report MPS as available but cannot allocate on it.
+    try:
+        (torch.ones(2, 2, device=device) @ torch.ones(2, 2, device=device)).cpu()
+        return True
+    except RuntimeError:
+        return False
+
+
 def devices():
     out = ["cpu"]
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and _usable("cuda"):
         out.append("cuda")
-    if torch.backends.mps.is_available():
+    if torch.backends.mps.is_available() and _usable("mps"):
         out.append("mps")
     return out
 

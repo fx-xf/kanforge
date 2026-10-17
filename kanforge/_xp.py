@@ -38,3 +38,38 @@ def cast_like(a, x):
     if namespace(x).__name__ == "torch":
         return a.to(x.dtype)
     return a.astype(x.dtype)
+
+
+def asarray_like(a, x):
+    """Convert a NumPy array or scalar to the backend, dtype and device of ``x``."""
+    xp = namespace(x)
+    if xp.__name__ == "torch":
+        return xp.as_tensor(a, dtype=x.dtype, device=x.device)
+    if xp.__name__ == "mlx.core":
+        return xp.array(a, dtype=x.dtype)
+    return xp.asarray(a, dtype=x.dtype)
+
+
+def repeat_rows(a, repeats: int):
+    """Repeat every row of ``a`` along axis 0, ``repeats`` times in a row."""
+    xp = namespace(a)
+    if xp.__name__ == "torch":
+        return a.repeat_interleave(repeats, dim=0)
+    return xp.repeat(a, repeats, axis=0)
+
+
+def relu(x):
+    return namespace(x).where(x > 0, x, 0 * x)
+
+
+def sigmoid(x):
+    return 0.5 * (1 + namespace(x).tanh(0.5 * x))
+
+
+def softplus(x):
+    xp = namespace(x)
+    return relu(x) + xp.log1p(xp.exp(-xp.abs(x)))
+
+
+def log_sigmoid(x):
+    return -softplus(-x)

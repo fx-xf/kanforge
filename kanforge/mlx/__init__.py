@@ -1,3 +1,3 @@
-from .layers import KAN, KANLinear
+from .layers import GRKAN, KAN, KANLinear, MultKAN, MultKANLinear
 
-__all__ = ["KAN", "KANLinear"]
+__all__ = ["GRKAN", "KAN", "KANLinear", "MultKAN", "MultKANLinear"]

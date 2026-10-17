@@ -6,8 +6,10 @@ Backends are imported explicitly so that NumPy stays the only hard dependency::
     from kanforge.mlx import KAN, KANLinear     # Apple silicon
 """
 
-from .bases import BASES, Basis, BSpline, Chebyshev, Fourier, make_basis
+from . import bases
+from .bases import *  # noqa: F401,F403
+from .bases import __all__ as _bases_all
 
-__version__ = "0.0.1"
+__version__ = "0.1.0.dev0"
 
-__all__ = ["BASES", "Basis", "BSpline", "Chebyshev", "Fourier", "make_basis", "__version__"]
+__all__ = [*_bases_all, "bases", "__version__"]
