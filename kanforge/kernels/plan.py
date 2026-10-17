@@ -28,10 +28,10 @@ from ..bases.radial import _envelope_derivatives
 ONE_MINUS_Z2 = np.array([0.5, 0.0, -0.5])  # 1 - z^2 in the Chebyshev basis
 
 # Plan kinds that backend="auto" sends to the kernel, per platform, chosen from
-# benchmarks/bench_kernels.py on Apple silicon (see BENCHMARKS.md): only where the
-# kernel was faster than plain ops for forward and forward+backward. CUDA stays
-# on plain ops until the Triton kernels are measured on a GPU.
-AUTO_KINDS = {"mps": ("bspline", "bump"), "mlx": ("bspline",), "cuda": ()}
+# benchmarks/bench_kernels.py (Apple M5 for MPS/MLX, RTX 3060 for CUDA; see
+# BENCHMARKS.md): only where the kernel was faster than plain ops for forward
+# and forward+backward.
+AUTO_KINDS = {"mps": ("bspline", "bump"), "mlx": ("bspline",), "cuda": ("bspline",)}
 
 
 @dataclass(frozen=True)
