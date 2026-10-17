@@ -18,6 +18,11 @@ from .. import regularization as reg
 from .._calculus import silu_derivative
 from .._layer import GridToolsMixin, basis_param_values, init_stds, mult_widths, resolve_groups
 from ..bases import Basis, Rational, make_basis
+from ..kernels import plan_for
+from ..kernels.plan import AUTO_KINDS
+from . import kernels as _kernels
+
+BACKENDS = ("auto", "ops", "kernel")
 
 
 class KANLinear(GridToolsMixin, nn.Module):
@@ -35,6 +40,11 @@ class KANLinear(GridToolsMixin, nn.Module):
                          has its own grid (``grid_ranges``, ``update_grid``)
 
     ``edge_dropout`` drops individual edge activations while training (DropKAN).
+
+    ``backend``: ``"ops"`` — plain PyTorch ops; ``"kernel"`` — fused Metal (MPS)
+    or Triton (CUDA/ROCm) kernel, an error if the basis or device has none;
+    ``"auto"`` — the kernel where benchmarks showed it faster (``AUTO_KINDS``).
+    Both give the same values and derivatives of every order.
     """
 
     def __init__(
@@ -51,6 +61,7 @@ class KANLinear(GridToolsMixin, nn.Module):
         coef_init: str = "normal",
         coef_init_std: float = 0.1,
         edge_dropout: float = 0.0,
+        backend: str = "auto",
         device=None,
         dtype=None,
     ):
@@ -66,6 +77,9 @@ class KANLinear(GridToolsMixin, nn.Module):
         self.coef_init = coef_init
         self.coef_init_std = coef_init_std
         self.edge_dropout = edge_dropout
+        if backend not in BACKENDS:
+            raise ValueError(f"backend must be one of {BACKENDS}")
+        self.backend = backend
         self._grid_ranges = grid_ranges
         init_stds(self.basis, in_features, out_features, coef_init, coef_init_std, base_activation is not None)
         self.coef = nn.Parameter(torch.empty(out_features, in_features, self.basis.size, **factory))
@@ -96,6 +110,7 @@ class KANLinear(GridToolsMixin, nn.Module):
         for name, value in buffers.items():
             self.register_buffer(f"basis_{name}", torch.as_tensor(value, **like))
         self._trainable_names, self._buffer_names = list(trainable), list(buffers)
+        self._plan = plan_for(self.basis)
 
     def reset_parameters(self) -> None:
         coef_std, base_std = init_stds(
@@ -137,13 +152,29 @@ class KANLinear(GridToolsMixin, nn.Module):
             keep = torch.rand_like(edges) >= self.edge_dropout
             y = (edges * keep).sum(-1) / (1 - self.edge_dropout)
             return y if self.bias is None else y + self.bias
-        # (..., in, n) -> (..., in*n) @ (in*n, out): one GEMM, as in efficient-kan.
-        y = self.basis(x, self.basis_params()).flatten(-2) @ self.effective_coef().flatten(1).T
+        if self.uses_kernel(x.device):
+            grid = getattr(self, "basis_grid", None) if self._plan.grid else None
+            y = _kernels.spline_forward(x, self.effective_coef(), grid, self._plan)
+        else:
+            # (..., in, n) -> (..., in*n) @ (in*n, out): one GEMM, as in efficient-kan.
+            y = self.basis(x, self.basis_params()).flatten(-2) @ self.effective_coef().flatten(1).T
         if self.base_weight is not None:
             y = y + F.linear(self.base_activation(x), self.base_weight)
         if self.bias is not None:
             y = y + self.bias
         return y
+
+    def uses_kernel(self, device: torch.device) -> bool:
+        """Whether forward runs the fused kernel on ``device``."""
+        if self.backend == "ops":
+            return False
+        ok = self._plan is not None and _kernels.available(device)
+        if self.backend == "kernel":
+            if not ok:
+                why = "basis" if self._plan is None else f"device {device}"
+                raise RuntimeError(f"no fused kernel for this {why}: {self.basis!r}; use backend='ops' or 'auto'")
+            return True
+        return ok and self._plan.kind in AUTO_KINDS.get(device.type, ())
 
     def edge_derivative(self, x: torch.Tensor, order: int = 1) -> torch.Tensor:
         """d^order phi_oi / dx_i^order for every edge, shape ``(..., out, in)``.

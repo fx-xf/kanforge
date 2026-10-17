@@ -25,3 +25,18 @@ jobs:
         run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -e ".[${{ matrix.extras }}]"
       - run: python -m pytest -q
+
+  # The Triton kernels run on CPU tensors under Triton's interpreter: this checks
+  # their math without a GPU (speed is measured on a CUDA machine separately).
+  triton-interpreter:
+    runs-on: ubuntu-latest
+    env:
+      TRITON_INTERPRET: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install triton -e ".[test]"
+      - run: python -m pytest -q tests/test_kernels.py

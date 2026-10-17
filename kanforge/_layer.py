@@ -117,7 +117,7 @@ class GridToolsMixin:
         out = {k: np.repeat(v, rep, axis=0) for k, v in trainable.items()}
         return {**out, **buffers}
 
-    def _apply(self, new_basis: Basis, new_trainable: dict, new_buffers: dict, x: np.ndarray, ridge: float):
+    def _refit_to(self, new_basis: Basis, new_trainable: dict, new_buffers: dict, x: np.ndarray, ridge: float):
         st = self._export_state()
         coef_eff = st["coef"] if st["edge_scale"] is None else st["coef"] * st["edge_scale"][..., None]
         coef = gridlib.refit(
@@ -160,7 +160,7 @@ class GridToolsMixin:
         buffers = dict(st["buffers"])
         for name in names:
             buffers[name] = gridlib.adaptive_grid(xs, buffers[name].shape[-1], margin, grid_eps)
-        self._apply(self.basis, st["trainable"], buffers, xs, ridge)
+        self._refit_to(self.basis, st["trainable"], buffers, xs, ridge)
 
     def refine_grid(self, grid_size: int, x=None, *, ridge: float = 0.0):
         """Same basis on a finer (or coarser) grid; grids keep their per-input shape."""
@@ -172,7 +172,7 @@ class GridToolsMixin:
             if name in st["buffers"]:
                 buffers[name] = gridlib.resample_grid(st["buffers"][name], buffers[name].shape[-1])
         xs = self._samples(x, self.basis, st["buffers"], 8 * new_basis.size + 64)
-        self._apply(new_basis, trainable, buffers, xs, ridge)
+        self._refit_to(new_basis, trainable, buffers, xs, ridge)
 
     def change_basis(self, basis, x=None, *, ridge: float = 0.0):
         """Convert to another basis (e.g. B-spline -> Chebyshev) by least squares.
@@ -187,4 +187,4 @@ class GridToolsMixin:
         src = self.basis if old_ranges is not None else new_basis
         src_buffers = st["buffers"] if old_ranges is not None else buffers
         xs = self._samples(x, src, src_buffers, 8 * max(new_basis.size, self.basis.size) + 64)
-        self._apply(new_basis, trainable, buffers, xs, ridge)
+        self._refit_to(new_basis, trainable, buffers, xs, ridge)

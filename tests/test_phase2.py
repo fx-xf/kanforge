@@ -288,3 +288,13 @@ def test_mlx_from_mlp_and_regularization():
     model = MLXKAN([3, 4, 2], "chebyshev")
     loss, grads = mnn.value_and_grad(model, lambda mdl: mlx_reg(mdl, x, coef_l1=0.1))(model)
     assert loss.item() > 0 and np.abs(np.array(grads["layers"][0]["coef"])).sum() > 0
+
+
+def test_layer_moves_between_devices_and_dtypes():
+    # GridToolsMixin once shadowed nn.Module._apply and broke .to()/.double().
+    layer = KANLinear(3, 2, kf.BSpline(4, 3), edge_scale=True).double()
+    assert layer.coef.dtype == torch.float64 and layer.basis_grid.dtype == torch.float64
+    layer = layer.to("cpu", torch.float32)
+    x = torch.rand(8, 3, dtype=torch.float64) - 0.5
+    layer.double().update_grid(x)
+    assert layer.basis_grid.dtype == torch.float64

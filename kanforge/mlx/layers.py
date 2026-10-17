@@ -17,12 +17,18 @@ from .. import regularization as reg
 from .._calculus import silu_derivative
 from .._layer import GridToolsMixin, basis_param_values, init_stds, mult_widths, resolve_groups
 from ..bases import Basis, Rational, make_basis
+from ..kernels import plan_for
+from ..kernels.plan import AUTO_KINDS
+from . import kernels as _kernels
+
+BACKENDS = ("auto", "ops", "kernel")
 
 
 class KANLinear(GridToolsMixin, nn.Module):
     """One KAN layer: y_o = sum_i s_oi * phi_oi(x_i) + sum_i w_oi * act(x_i) + b_o.
 
     Parameter names and shapes match ``kanforge.torch.KANLinear``.
+    ``backend`` as in torch: ``"kernel"`` runs the fused Metal kernel on the GPU.
     """
 
     def __init__(
@@ -39,6 +45,7 @@ class KANLinear(GridToolsMixin, nn.Module):
         coef_init: str = "normal",
         coef_init_std: float = 0.1,
         edge_dropout: float = 0.0,
+        backend: str = "auto",
     ):
         super().__init__()
         if not 0 <= edge_dropout < 1:
@@ -49,6 +56,9 @@ class KANLinear(GridToolsMixin, nn.Module):
         self._base_activation = base_activation
         self.groups = resolve_groups(in_features, groups)
         self.edge_dropout = edge_dropout
+        if backend not in BACKENDS:
+            raise ValueError(f"backend must be one of {BACKENDS}")
+        self.backend = backend
         coef_std, base_std = init_stds(
             self._basis, in_features, out_features, coef_init, coef_init_std, base_activation is not None
         )
@@ -73,6 +83,7 @@ class KANLinear(GridToolsMixin, nn.Module):
         for name, value in {**trainable, **buffers}.items():
             self[f"basis_{name}"] = mx.array(np.asarray(value, dtype=np.float32))
         self._trainable_names, self._buffer_names = list(trainable), list(buffers)
+        self._plan = plan_for(self._basis)
         if buffers:
             self.freeze(recurse=False, keys=[f"basis_{n}" for n in buffers])
 
@@ -101,13 +112,29 @@ class KANLinear(GridToolsMixin, nn.Module):
             keep = mx.random.uniform(shape=edges.shape) >= self.edge_dropout
             y = (edges * keep).sum(-1) / (1 - self.edge_dropout)
             return y + self.bias if "bias" in self else y
-        phi = self._basis(x, self.basis_params())
-        y = phi.reshape(*phi.shape[:-2], -1) @ self.effective_coef().reshape(self.out_features, -1).T
+        if self.uses_kernel():
+            grid = self["basis_grid"] if self._plan.grid else None
+            y = _kernels.spline_forward(x, self.effective_coef(), grid, self._plan)
+        else:
+            phi = self._basis(x, self.basis_params())
+            y = phi.reshape(*phi.shape[:-2], -1) @ self.effective_coef().reshape(self.out_features, -1).T
         if "base_weight" in self:
             y = y + self._base_activation(x) @ self.base_weight.T
         if "bias" in self:
             y = y + self.bias
         return y
+
+    def uses_kernel(self) -> bool:
+        """Whether forward runs the fused Metal kernel (default device is the GPU)."""
+        if self.backend == "ops":
+            return False
+        ok = self._plan is not None and mx.metal.is_available() and mx.default_device() == mx.gpu
+        if self.backend == "kernel":
+            if not ok:
+                why = "basis" if self._plan is None else "device (needs the Metal GPU)"
+                raise RuntimeError(f"no fused kernel for this {why}: {self._basis!r}; use backend='ops' or 'auto'")
+            return True
+        return ok and self._plan.kind in AUTO_KINDS["mlx"]
 
     def edge_derivative(self, x: mx.array, order: int = 1) -> mx.array:
         """d^order phi_oi / dx_i^order for every edge, shape ``(..., out, in)``."""
