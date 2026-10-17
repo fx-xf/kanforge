@@ -78,7 +78,7 @@ def test_bspline_derivative_matches_scipy():
     interp = pytest.importorskip("scipy.interpolate")
     basis = kf.BSpline(6, 3, (-1.0, 2.0))
     x = np.random.default_rng(0).uniform(-1, 2, 50)
-    t = basis.knots(x)
+    t = basis.knots()
     for order in (1, 2, 3):
         for j in range(basis.size):
             c = np.zeros(basis.size)
@@ -170,9 +170,10 @@ def test_rational_init_fits_target(target):
 
 def test_concat_routes_parameters():
     basis = CASES["concat"]
-    assert set(basis.param_specs()) == {"1_frequency_scale"}
+    assert set(basis.param_specs()) == {"0_grid", "1_frequency_scale"}
+    assert basis.grid_names() == ["0_grid"]
     x = sample_x()
-    params = {"1_frequency_scale": np.array([[2.0]] * 3)}
+    params = {**basis.default_params(x), "1_frequency_scale": np.array([[2.0]] * 3)}
     np.testing.assert_allclose(basis(x, params)[..., 6:], kf.Fourier(2)(2 * x), atol=1e-12)
 
 

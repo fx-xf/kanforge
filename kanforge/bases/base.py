@@ -4,8 +4,9 @@ Every edge function is phi(x) = sum_b c_b * B_b(x; theta). A basis maps an
 input of shape ``(..., in)`` to ``(..., in, size)`` and can return any
 derivative order of the same shape.
 
-``theta`` are optional trainable basis parameters (rational coefficients,
-wavelet scales, knot positions, ...). A basis declares them with
+``theta`` are optional basis parameters: trainable ones (rational
+coefficients, wavelet scales, knot positions, ...) and fixed state such as
+the grid of a spline, which differs per input and is updated from data. A basis declares them with
 ``param_specs()``: one default value per parameter, shaped for a *single*
 input. Layers store them per input, per group of inputs (GR-KAN) or once
 per layer and pass them in shaped ``(in, *shape)`` or ``(*shape)``; both
@@ -27,9 +28,14 @@ from .._xp import asarray_like
 
 @dataclass(frozen=True)
 class ParamSpec:
-    """Default value of one trainable basis parameter for a single input."""
+    """Default value of one basis parameter for a single input.
+
+    ``trainable=False`` marks state such as grids: layers keep it as a buffer,
+    always one copy per input, and grid tools update it from data.
+    """
 
     value: np.ndarray
+    trainable: bool = True
 
     @property
     def shape(self) -> tuple[int, ...]:
@@ -59,6 +65,10 @@ class Basis:
 
     def param_specs(self) -> dict[str, ParamSpec]:
         return {}
+
+    def grid_names(self) -> list[str]:
+        """Names of the grid buffers (``"grid"``, or ``"{i}_grid"`` in ``Concat``)."""
+        return [k for k, s in self.param_specs().items() if not s.trainable and k.endswith("grid")]
 
     def default_params(self, like) -> dict[str, Any]:
         return {k: asarray_like(s.value, like) for k, s in self.param_specs().items()}

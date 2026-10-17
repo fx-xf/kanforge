@@ -16,7 +16,7 @@ def test_bspline_matches_scipy(order, grid_size):
     scipy_bspline = pytest.importorskip("scipy.interpolate").BSpline
     basis = BSpline(grid_size, order, (-1.5, 2.0))
     x = rng.uniform(-1.5, 2.0, size=200)
-    expected = scipy_bspline.design_matrix(x, basis.knots(x), order).toarray()
+    expected = scipy_bspline.design_matrix(x, basis.knots(), order).toarray()
     np.testing.assert_allclose(basis(x), expected, atol=1e-12)
 
 

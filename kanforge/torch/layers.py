@@ -9,16 +9,18 @@ from __future__ import annotations
 import math
 from collections.abc import Callable, Sequence
 
+import numpy as np
 import torch
 import torch.nn.functional as F
 from torch import nn
 
+from .. import regularization as reg
 from .._calculus import silu_derivative
-from .._layer import basis_param_values, coef_std, mult_widths, resolve_groups
+from .._layer import GridToolsMixin, basis_param_values, init_stds, mult_widths, resolve_groups
 from ..bases import Basis, Rational, make_basis
 
 
-class KANLinear(nn.Module):
+class KANLinear(GridToolsMixin, nn.Module):
     """One KAN layer: y_o = sum_i s_oi * phi_oi(x_i) + sum_i w_oi * act(x_i) + b_o.
 
     Parameters (same names on every backend):
@@ -26,8 +28,13 @@ class KANLinear(nn.Module):
       ``base_weight``    ``(out, in)`` — residual branch, absent if ``base_activation`` is None
       ``bias``           ``(out,)`` — absent if ``bias=False``
       ``edge_scale``     ``(out, in)`` — per-edge scale s_oi, only with ``edge_scale=True``
-      ``basis_<name>``   ``(groups, *shape)`` — trainable basis parameters; ``groups``
+      ``basis_<name>``   trainable basis parameters ``(groups, *shape)``: ``groups``
                          inputs share them (None: one set per input, 1: one per layer)
+    Buffers:
+      ``basis_<name>``   basis state such as grids, ``(in, *shape)``: every input
+                         has its own grid (``grid_ranges``, ``update_grid``)
+
+    ``edge_dropout`` drops individual edge activations while training (DropKAN).
     """
 
     def __init__(
@@ -40,12 +47,16 @@ class KANLinear(nn.Module):
         base_activation: Callable[[torch.Tensor], torch.Tensor] | None = F.silu,
         groups: int | None = None,
         edge_scale: bool = False,
+        grid_ranges=None,
         coef_init: str = "normal",
         coef_init_std: float = 0.1,
+        edge_dropout: float = 0.0,
         device=None,
         dtype=None,
     ):
         super().__init__()
+        if not 0 <= edge_dropout < 1:
+            raise ValueError("edge_dropout must be in [0, 1)")
         factory = {"device": device, "dtype": dtype}
         self.in_features = in_features
         self.out_features = out_features
@@ -54,7 +65,9 @@ class KANLinear(nn.Module):
         self.groups = resolve_groups(in_features, groups)
         self.coef_init = coef_init
         self.coef_init_std = coef_init_std
-        coef_std(self.basis, in_features, coef_init, coef_init_std)  # validates coef_init
+        self.edge_dropout = edge_dropout
+        self._grid_ranges = grid_ranges
+        init_stds(self.basis, in_features, out_features, coef_init, coef_init_std, base_activation is not None)
         self.coef = nn.Parameter(torch.empty(out_features, in_features, self.basis.size, **factory))
         if base_activation is not None:
             self.base_weight = nn.Parameter(torch.empty(out_features, in_features, **factory))
@@ -68,31 +81,47 @@ class KANLinear(nn.Module):
             self.edge_scale = nn.Parameter(torch.empty(out_features, in_features, **factory))
         else:
             self.register_parameter("edge_scale", None)
-        self._basis_param_names = []
-        for name in basis_param_values(self.basis, self.groups):
-            self.register_parameter(f"basis_{name}", nn.Parameter(torch.empty(0, **factory)))
-            self._basis_param_names.append(name)
+        self._trainable_names: list[str] = []
+        self._buffer_names: list[str] = []
         self.reset_parameters()
 
+    # --- parameters -------------------------------------------------------
+
+    def _set_basis_state(self, trainable: dict, buffers: dict) -> None:
+        for name in self._trainable_names + self._buffer_names:
+            delattr(self, f"basis_{name}")
+        like = {"dtype": self.coef.dtype, "device": self.coef.device}
+        for name, value in trainable.items():
+            self.register_parameter(f"basis_{name}", nn.Parameter(torch.as_tensor(value, **like)))
+        for name, value in buffers.items():
+            self.register_buffer(f"basis_{name}", torch.as_tensor(value, **like))
+        self._trainable_names, self._buffer_names = list(trainable), list(buffers)
+
     def reset_parameters(self) -> None:
-        nn.init.normal_(self.coef, std=coef_std(self.basis, self.in_features, self.coef_init, self.coef_init_std))
+        coef_std, base_std = init_stds(
+            self.basis, self.in_features, self.out_features, self.coef_init, self.coef_init_std, self.base_weight is not None
+        )
+        nn.init.normal_(self.coef, std=coef_std) if coef_std else nn.init.zeros_(self.coef)
         if self.base_weight is not None:
-            nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
+            if base_std is None:
+                nn.init.kaiming_uniform_(self.base_weight, a=math.sqrt(5))
+            else:
+                nn.init.normal_(self.base_weight, std=base_std)
         if self.bias is not None:
             nn.init.zeros_(self.bias)
         if self.edge_scale is not None:
             nn.init.ones_(self.edge_scale)
-        for name, value in basis_param_values(self.basis, self.groups).items():
-            p = getattr(self, f"basis_{name}")
-            p.data = torch.as_tensor(value, dtype=self.coef.dtype, device=self.coef.device)
+        self._set_basis_state(*basis_param_values(self.basis, self.groups, self.in_features, self._grid_ranges))
 
     def basis_params(self) -> dict[str, torch.Tensor]:
-        """Basis parameters expanded to ``(in, *shape)`` (or ``(1, *shape)``)."""
+        """Basis parameters and buffers expanded to ``(in, *shape)`` (or ``(1, *shape)``)."""
         rep = self.in_features // self.groups
         out = {}
-        for name in self._basis_param_names:
+        for name in self._trainable_names:
             p = getattr(self, f"basis_{name}")
             out[name] = p if self.groups in (1, self.in_features) else p.repeat_interleave(rep, dim=0)
+        for name in self._buffer_names:
+            out[name] = getattr(self, f"basis_{name}")
         return out
 
     def effective_coef(self) -> torch.Tensor:
@@ -100,7 +129,14 @@ class KANLinear(nn.Module):
             return self.coef
         return self.coef * self.edge_scale[..., None]
 
+    # --- computation ------------------------------------------------------
+
     def forward(self, x: torch.Tensor) -> torch.Tensor:
+        if self.training and self.edge_dropout > 0:
+            edges = self.edge_derivative(x, 0)
+            keep = torch.rand_like(edges) >= self.edge_dropout
+            y = (edges * keep).sum(-1) / (1 - self.edge_dropout)
+            return y if self.bias is None else y + self.bias
         # (..., in, n) -> (..., in*n) @ (in*n, out): one GEMM, as in efficient-kan.
         y = self.basis(x, self.basis_params()).flatten(-2) @ self.effective_coef().flatten(1).T
         if self.base_weight is not None:
@@ -118,14 +154,86 @@ class KANLinear(nn.Module):
         """
         d = torch.einsum("...in,oin->...oi", self.basis.derivative(x, order, self.basis_params()), self.effective_coef())
         if self.base_weight is not None:
-            if self.base_activation is not F.silu:
+            if order == 0:
+                base = self.base_activation(x)
+            elif self.base_activation is F.silu:
+                base = silu_derivative(x, order)
+            else:
                 raise NotImplementedError("analytic derivatives need base_activation=F.silu or None")
-            d = d + silu_derivative(x, order)[..., None, :] * self.base_weight
+            d = d + base[..., None, :] * self.base_weight
         return d
+
+    # --- grid tools (GridToolsMixin) --------------------------------------
+
+    @staticmethod
+    def _to_numpy(x) -> np.ndarray:
+        return x.detach().cpu().double().numpy() if isinstance(x, torch.Tensor) else np.asarray(x)
+
+    def _export_state(self) -> dict:
+        def n(t):
+            return None if t is None else self._to_numpy(t)
+
+        return {
+            "coef": n(self.coef),
+            "edge_scale": n(self.edge_scale),
+            "trainable": {k: n(getattr(self, f"basis_{k}")) for k in self._trainable_names},
+            "buffers": {k: n(getattr(self, f"basis_{k}")) for k in self._buffer_names},
+        }
+
+    @torch.no_grad()
+    def _load_state(self, basis, coef, edge_scale, trainable, buffers) -> None:
+        like = {"dtype": self.coef.dtype, "device": self.coef.device}
+        self.basis = basis
+        self.coef = nn.Parameter(torch.as_tensor(coef, **like))
+        if edge_scale is not None:
+            self.edge_scale = nn.Parameter(torch.as_tensor(edge_scale, **like))
+        self._set_basis_state(trainable, buffers)
+
+    # --- construction from MLPs -------------------------------------------
+
+    @classmethod
+    def from_linear(cls, linear: nn.Linear, activation: Callable = F.silu, basis="bspline", **kwargs) -> KANLinear:
+        """Exactly ``linear(activation(x))``: the activation becomes the base branch,
+        spline coefficients start at zero and learn corrections."""
+        layer = cls(
+            linear.in_features,
+            linear.out_features,
+            basis,
+            bias=linear.bias is not None,
+            base_activation=activation,
+            coef_init="zero",
+            device=linear.weight.device,
+            dtype=linear.weight.dtype,
+            **kwargs,
+        )
+        with torch.no_grad():
+            layer.base_weight.copy_(linear.weight)
+            if linear.bias is not None:
+                layer.bias.copy_(linear.bias)
+        return layer
 
     def extra_repr(self) -> str:
         groups = "" if self.groups == self.in_features else f", groups={self.groups}"
         return f"in_features={self.in_features}, out_features={self.out_features}, basis={self.basis!r}{groups}"
+
+
+def from_mlp(mlp: nn.Sequential, basis="bspline", **kwargs) -> nn.Sequential:
+    """Turn ``Linear, act, Linear, act, ..., Linear`` into an equal network:
+    the first Linear stays, every ``(act, Linear)`` pair becomes a ``KANLinear``
+    whose base branch is that activation. Outputs match exactly at start."""
+    mods = list(mlp)
+    if not mods or not isinstance(mods[0], nn.Linear):
+        raise ValueError("the MLP must start with nn.Linear")
+    out = [mods[0]]
+    i = 1
+    while i < len(mods):
+        if i + 1 < len(mods) and isinstance(mods[i + 1], nn.Linear) and not isinstance(mods[i], nn.Linear):
+            out.append(KANLinear.from_linear(mods[i + 1], mods[i], basis, **kwargs))
+            i += 2
+        else:
+            out.append(mods[i])
+            i += 1
+    return nn.Sequential(*out)
 
 
 class GRKAN(KANLinear):
@@ -172,11 +280,18 @@ class KAN(nn.Sequential):
 
     def edge_derivative(self, x: torch.Tensor, order: int = 1) -> list[torch.Tensor]:
         """Per-layer edge derivatives at the activations each layer receives."""
-        out = []
+        return [layer.edge_derivative(h, order) for layer, h in layer_inputs(self, x)]
+
+    @torch.no_grad()
+    def update_grid(self, x: torch.Tensor, **kwargs) -> None:
+        """Update every layer's grid from the activations it receives (pykan)."""
         for layer in self:
-            out.append(layer.edge_derivative(x, order))
+            layer.update_grid(x, **kwargs)
             x = layer(x)
-        return out
+
+    def refine_grid(self, grid_size: int, **kwargs) -> None:
+        for layer in self:
+            layer.refine_grid(grid_size, **kwargs)
 
 
 class MultKANLinear(nn.Module):
@@ -215,3 +330,55 @@ class MultKAN(nn.Sequential):
             layers.append(MultKANLinear(a_sum + a_mult, b_sum, b_mult, basis, arity=arity, **layer_kwargs))
         super().__init__(*layers)
         self.widths = list(widths)
+
+
+def layer_inputs(model: nn.Module, x: torch.Tensor) -> list[tuple[KANLinear, torch.Tensor]]:
+    """(KANLinear, the input it receives) for every KAN layer of ``model``.
+
+    Works for KANLinear, MultKANLinear and any nn.Sequential of modules.
+    """
+    out = []
+
+    def walk(m, h):
+        if isinstance(m, KANLinear):
+            out.append((m, h))
+            return m(h)
+        if isinstance(m, MultKANLinear):
+            out.append((m.kan, h))
+            return m(h)
+        if isinstance(m, nn.Sequential):
+            for sub in m:
+                h = walk(sub, h)
+            return h
+        return m(h)
+
+    walk(model, x)
+    return out
+
+
+def regularization(
+    model: nn.Module,
+    x: torch.Tensor | None = None,
+    *,
+    l1: float = 1.0,
+    entropy: float = 2.0,
+    coef_l1: float = 0.0,
+    coef_smooth: float = 0.0,
+) -> torch.Tensor:
+    """pykan's sparsity penalty summed over all KAN layers.
+
+    With ``x`` the edge magnitudes are mean |phi_oi| over the batch (pykan);
+    without it, mean |coef| (efficient-kan). Add ``lamb * regularization(...)``
+    to the loss.
+    """
+    if x is None:
+        layers = [m for m in model.modules() if isinstance(m, KANLinear)]
+        mags = [m.effective_coef().abs().mean(-1) for m in layers]
+    else:
+        pairs = layer_inputs(model, x)
+        layers = [m for m, _ in pairs]
+        mags = [reg.edge_magnitude(m.edge_derivative(h, 0)) for m, h in pairs]
+    total = 0.0
+    for m, mag in zip(layers, mags):
+        total = total + reg.penalty(mag, m.coef, l1=l1, entropy=entropy, coef_l1=coef_l1, coef_smooth=coef_smooth)
+    return total

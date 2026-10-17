@@ -1,3 +1,3 @@
-from .layers import GRKAN, KAN, KANLinear, MultKAN, MultKANLinear
+from .layers import GRKAN, KAN, KANLinear, MultKAN, MultKANLinear, from_mlp, layer_inputs, regularization
 
-__all__ = ["GRKAN", "KAN", "KANLinear", "MultKAN", "MultKANLinear"]
+__all__ = ["GRKAN", "KAN", "KANLinear", "MultKAN", "MultKANLinear", "from_mlp", "layer_inputs", "regularization"]

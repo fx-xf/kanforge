@@ -28,7 +28,8 @@ def test_matches_reference(basis, device, tol):
 
 def test_parameters_match_torch_names():
     layer = KANLinear(3, 2, "bspline")
-    assert set(layer.parameters()) == {"coef", "base_weight", "bias"}
+    assert set(layer.parameters()) == {"coef", "base_weight", "bias", "basis_grid"}
+    assert set(layer.trainable_parameters()) == {"coef", "base_weight", "bias"}  # the grid is frozen
     bare = KANLinear(3, 2, "chebyshev", base_activation=None, bias=False)
     assert set(bare.parameters()) == {"coef"}
     assert bare(mx.zeros((4, 3))).shape == (4, 2)

@@ -11,7 +11,7 @@ from kanforge.reference import kan_linear
 torch = pytest.importorskip("torch")
 from kanforge.torch import GRKAN, KAN, KANLinear, MultKAN, MultKANLinear  # noqa: E402
 
-LEARNABLE = [n for n, b in CASES.items() if b.param_specs()]
+LEARNABLE = [n for n, b in CASES.items() if b.param_specs()]  # trainable params or grids
 
 
 def expanded_params(layer):
@@ -27,8 +27,8 @@ def test_learnable_basis_layer_matches_reference(name, groups):
         for p in layer.parameters():
             p.add_(0.05 * torch.randn_like(p))
     rows = {None: 4, 2: 2, 1: 1}[groups]
-    for k in layer.basis_params():
-        assert getattr(layer, f"basis_{k}").shape[0] == rows
+    for k, spec in layer.basis.param_specs().items():
+        assert getattr(layer, f"basis_{k}").shape[0] == (rows if spec.trainable else 4)
     x = torch.rand(10, 4, dtype=torch.float64) * 1.8 - 0.9
     want = kan_linear(
         x.numpy(),

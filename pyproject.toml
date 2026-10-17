@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kanforge"
-version = "0.1.0.dev0"
+version = "0.2.0.dev0"
 description = "Kolmogorov–Arnold Networks for every backend: NumPy reference, PyTorch (CUDA/MPS/CPU) and Apple MLX."
 readme = "README.md"
 license = "Apache-2.0"

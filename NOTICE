@@ -17,6 +17,8 @@ No third-party source code is included at this time. Ideas are credited to:
   JacobiKAN, fKAN and rKAN (BSD-3-Clause), BSRBF-KAN, KAF, FCN-KAN,
   Double-KANs, torch-conv-kan (MIT): the corresponding basis functions.
   All implementations here are written from the papers' formulas.
+- pykan (MIT License): adaptive grids, grid extension, sparsity regularisation.
+- DropKAN by Ghaith81: dropout of edge activations.
 
 Code borrowed later from permissively licensed projects will be listed here
 together with its original copyright and license.

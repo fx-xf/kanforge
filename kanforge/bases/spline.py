@@ -1,4 +1,10 @@
-"""Piecewise bases: B-splines, NURBS, truncated powers, ReLU-KAN."""
+"""Piecewise bases: B-splines, NURBS, truncated powers, ReLU-KAN.
+
+Their grid is a per-input buffer ``grid`` of increasing points; by default
+it is uniform over ``grid_range`` and grid tools (``kanforge.grid``) adapt it
+to the data. Splines extend it by ``order`` points on each side with the
+mean grid step, as pykan does.
+"""
 
 from __future__ import annotations
 
@@ -9,21 +15,23 @@ from numpy.polynomial import legendre as L
 from numpy.polynomial import polynomial as P
 
 from .._calculus import falling, horner, quotient
-from .._xp import arange_like, asarray_like, cast_like, namespace, relu, softplus
+from .._xp import arange_like, cast_like, namespace, relu, softplus
 from .base import Basis, ParamSpec, _check_range
 
 
-class BSpline(Basis):
-    """Uniform B-splines of ``order`` on ``grid_size`` intervals over ``grid_range``.
+def extend_grid(grid, k: int):
+    """Add ``k`` points on each side of ``grid`` (``(..., G+1)``) with the mean step."""
+    if k == 0:
+        return grid
+    h = (grid[..., -1:] - grid[..., :1]) / (grid.shape[-1] - 1)
+    i = arange_like(k, grid)
+    left = grid[..., :1] - h * (k - i)
+    right = grid[..., -1:] + h * (i + 1)
+    return namespace(grid).concatenate([left, grid, right], -1)
 
-    As in pykan, the knot vector is extended by ``order`` knots on each side,
-    so there are ``grid_size + order`` functions and they sum to one inside
-    ``grid_range``. Outside the extended grid all values are zero and the
-    layer falls back to its base (SiLU) branch.
-    """
 
-    name = "bspline"
-    local = True
+class _Gridded(Basis):
+    """Shared constructor and grid spec of the spline-like bases."""
 
     def __init__(self, grid_size: int = 5, order: int = 3, grid_range: tuple[float, float] = (-1.0, 1.0)):
         if grid_size < 1 or order < 0:
@@ -40,33 +48,48 @@ class BSpline(Basis):
     def support(self) -> int:
         return self.order + 1
 
-    @property
-    def step(self) -> float:
-        lo, hi = self.grid_range
-        return (hi - lo) / self.grid_size
+    def param_specs(self):
+        return {"grid": ParamSpec(np.linspace(*self.grid_range, self.grid_size + 1), trainable=False)}
 
-    def knots(self, like):
-        g, k, h = self.grid_size, self.order, self.step
-        return self.grid_range[0] + (arange_like(g + 2 * k + 1, like) - k) * h
-
-    def _eval(self, xe, order, p):
-        xp = namespace(xe)
-        k, h = self.order, self.step
-        if order > k:
-            return 0 * xe * arange_like(self.size, xe)
-        t = self.knots(xe)
-        b = cast_like(xp.logical_and(xe >= t[:-1], xe < t[1:]), xe)
-        # Cox–de Boor up to degree k - order; on a uniform grid every
-        # denominator is p*h.
-        for q in range(1, k - order + 1):
-            b = ((xe - t[: -(q + 1)]) * b[..., :-1] + (t[q + 1 :] - xe) * b[..., 1:]) / (q * h)
-        # d/dx B_{q,j} = (B_{q-1,j} - B_{q-1,j+1}) / h on a uniform grid.
-        for _ in range(order):
-            b = (b[..., :-1] - b[..., 1:]) / h
-        return b
+    def knots(self, p=None):
+        """Extended knot vector; ``p`` defaults to the uniform NumPy grid."""
+        grid = np.linspace(*self.grid_range, self.grid_size + 1) if p is None else p["grid"]
+        return extend_grid(grid, self.order)
 
     def config(self) -> dict[str, Any]:
         return {"name": self.name, "grid_size": self.grid_size, "order": self.order, "grid_range": self.grid_range}
+
+
+class BSpline(_Gridded):
+    """B-splines of ``order`` on ``grid_size`` intervals (pykan / efficient-kan).
+
+    There are ``grid_size + order`` functions; they sum to one inside the
+    grid. Outside the extended grid all values are zero and the layer falls
+    back to its base (SiLU) branch.
+    """
+
+    name = "bspline"
+    local = True
+
+    def _eval(self, xe, order, p):
+        xp = namespace(xe)
+        k = self.order
+        if order > k:
+            return 0 * xe * arange_like(self.size, xe)
+        t = self.knots(p)
+        b = cast_like(xp.logical_and(xe >= t[..., :-1], xe < t[..., 1:]), xe)
+        # Cox–de Boor up to degree k - order.
+        for q in range(1, k - order + 1):
+            left = (xe - t[..., : -(q + 1)]) / (t[..., q:-1] - t[..., : -(q + 1)])
+            right = (t[..., q + 1 :] - xe) / (t[..., q + 1 :] - t[..., 1:-q])
+            b = left * b[..., :-1] + right * b[..., 1:]
+        # d/dx B_{q,j} = q B_{q-1,j} / (t_{j+q} - t_j) - q B_{q-1,j+1} / (t_{j+q+1} - t_{j+1}).
+        for q in range(k - order + 1, k + 1):
+            n = b.shape[-1] - 1
+            b = q * (
+                b[..., :-1] / (t[..., q : q + n] - t[..., :n]) - b[..., 1:] / (t[..., q + 1 : q + 1 + n] - t[..., 1 : 1 + n])
+            )
+        return b
 
 
 class NURBS(Basis):
@@ -95,7 +118,7 @@ class NURBS(Basis):
         return self._spline.support
 
     def param_specs(self):
-        return {"log_weights": ParamSpec(np.zeros(self.size))}
+        return {**self._spline.param_specs(), "log_weights": ParamSpec(np.zeros(self.size))}
 
     def _eval(self, xe, order, p):
         xp = namespace(xe)
@@ -110,11 +133,13 @@ class NURBS(Basis):
 
 
 class TruncatedPower(Basis):
-    """TruKAN basis: Legendre P_0..P_degree plus (x - t_j)_+^degree / (hi - t_j)^degree.
+    """TruKAN basis: Legendre P_0..P_degree of the grid-normalised input plus
+    (x - t_j)_+^degree / (hi - t_j)^degree.
 
-    With ``learn_knots`` the interior knots are trainable per input; they stay
-    ordered inside ``grid_range`` because they are cumulative sums of
-    softplus increments (as in TruKAN).
+    The grid holds ``num_knots + 2`` points: the ends of the range and the
+    interior knots. With ``learn_knots`` the interior knots are trainable per
+    input; they stay ordered because they are cumulative sums of softplus
+    increments (as in TruKAN).
     """
 
     name = "truncated_power"
@@ -139,31 +164,24 @@ class TruncatedPower(Basis):
         return self.degree + 1 + self.num_knots
 
     def param_specs(self):
-        if not self.learn_knots:
-            return {}
-        inc = (self.grid_range[1] - self.grid_range[0]) / (self.num_knots + 1)
-        raw = np.log(np.expm1(inc))  # softplus^-1
-        return {"knot_logits": ParamSpec(np.full(self.num_knots + 1, raw))}
-
-    def _knots(self, xe, p):
-        lo, hi = self.grid_range
-        if not self.learn_knots:
-            return asarray_like(np.linspace(lo, hi, self.num_knots + 2)[1:-1], xe)
-        xp = namespace(xe)
-        inc = softplus(p["knot_logits"]) + 1e-8
-        cum = xp.cumsum(inc, -1)
-        return lo + (hi - lo) * cum[..., :-1] / cum[..., -1:]
+        specs = {"grid": ParamSpec(np.linspace(*self.grid_range, self.num_knots + 2), trainable=False)}
+        if self.learn_knots:
+            inc = (self.grid_range[1] - self.grid_range[0]) / (self.num_knots + 1)
+            specs["knot_logits"] = ParamSpec(np.full(self.num_knots + 1, np.log(np.expm1(inc))))
+        return specs
 
     def _eval(self, xe, order, p):
         xp = namespace(xe)
-        lo, hi = self.grid_range
+        grid = p["grid"]
+        lo, hi = grid[..., :1], grid[..., -1:]
+        if self.learn_knots:
+            cum = xp.cumsum(softplus(p["knot_logits"]) + 1e-8, -1)
+            t = lo + (hi - lo) * cum[..., :-1] / cum[..., -1:]
+        else:
+            t = grid[..., 1:-1]
         a = 2.0 / (hi - lo)
-        s = a * xe - (lo + hi) / (hi - lo)
-        polys = []
-        for c in self._legendre:
-            d = P.polyder(c, order) if order else c
-            polys.append(horner(list(d), s) * a**order)
-        t = self._knots(xe, p)
+        s = a * (xe - lo) - 1
+        polys = [horner(list(P.polyder(c, order) if order else c), s) * a**order for c in self._legendre]
         scale = 1.0 / xp.maximum(hi - t, 0 * t + 1e-6)
         v = relu((xe - t) * scale)
         k = self.degree
@@ -185,39 +203,22 @@ class TruncatedPower(Basis):
         }
 
 
-class ReLUKAN(Basis):
+class ReLUKAN(_Gridded):
     """ReLU-KAN: R_i(x) = [relu(e_i - x) * relu(x - s_i)]^2 * 16 / (e_i - s_i)^4.
 
-    Same layout as ``BSpline``: ``grid_size + order`` bumps of width
-    ``(order + 1) * h`` starting every ``h``; each peaks at 1. Only additions,
-    products and ReLU, so it is cheap on any accelerator.
+    Same layout as ``BSpline``: bump i spans knots t_i .. t_{i+order+1} of the
+    extended grid and peaks at 1 on a uniform grid. Only additions, products
+    and ReLU, so it is cheap on any accelerator.
     """
 
     name = "relu_kan"
     local = True
 
-    def __init__(self, grid_size: int = 5, order: int = 3, grid_range: tuple[float, float] = (-1.0, 1.0)):
-        if grid_size < 1 or order < 0:
-            raise ValueError("grid_size must be >= 1 and order >= 0")
-        self.grid_size = int(grid_size)
-        self.order = int(order)
-        self.grid_range = _check_range(grid_range)
-
-    @property
-    def size(self) -> int:
-        return self.grid_size + self.order
-
-    @property
-    def support(self) -> int:
-        return self.order + 1
-
     def _eval(self, xe, order, p):
-        lo, hi = self.grid_range
-        h = (hi - lo) / self.grid_size
-        width = (self.order + 1) * h
-        s = lo + (arange_like(self.size, xe) - self.order) * h
-        e = s + width
-        norm = 16.0 / width**4
+        t = self.knots(p)
+        n, k = self.size, self.order
+        s, e = t[..., :n], t[..., k + 1 : k + 1 + n]
+        norm = 16.0 / (e - s) ** 4
         a, b = relu(e - xe), relu(xe - s)
         if order == 0:
             return (a * b) ** 2 * norm
@@ -230,10 +231,7 @@ class ReLUKAN(Basis):
         elif order == 3:
             r = 6 * dq * d2q
         elif order == 4:
-            r = 6 * d2q * d2q + 0 * xe
+            r = 6 * d2q * d2q + 0 * q
         else:
-            r = 0 * xe * s
+            r = 0 * q
         return r * mask * norm
-
-    def config(self):
-        return {"name": self.name, "grid_size": self.grid_size, "order": self.order, "grid_range": self.grid_range}

@@ -15,7 +15,7 @@ import numpy as np
 from numpy.polynomial import polynomial as P
 
 from .._calculus import TANH_FACTOR, chain_polys, horner
-from .._xp import asarray_like, namespace
+from .._xp import namespace
 from .base import Basis, ParamSpec, _check_range
 
 
@@ -51,23 +51,23 @@ class _Envelope(Basis):
     def size(self) -> int:
         return self.count
 
-    def _defaults(self):
-        lo, hi = self.grid_range
-        return np.linspace(lo, hi, self.count), np.array([math.log((hi - lo) / (self.count - 1))])
-
     def param_specs(self):
+        lo, hi = self.grid_range
+        centers = np.linspace(lo, hi, self.count)
         if not self.learnable:
-            return {}
-        centers, log_scale = self._defaults()
+            # Fixed centres are a grid: per input, adaptable from data.
+            return {"grid": ParamSpec(centers, trainable=False)}
+        log_scale = np.array([math.log((hi - lo) / (self.count - 1))])
         return {"centers": ParamSpec(centers), "log_scale": ParamSpec(log_scale)}
 
     def _eval(self, xe, order, p):
         xp = namespace(xe)
         if self.learnable:
-            c, log_s = p["centers"], p["log_scale"]
+            c = p["centers"]
+            k = self.u_scale * xp.exp(-p["log_scale"])
         else:
-            c, log_s = (asarray_like(a, xe) for a in self._defaults())
-        k = self.u_scale * xp.exp(-log_s)
+            c = p["grid"]
+            k = self.u_scale * (self.count - 1) / (c[..., -1:] - c[..., :1])
         u = (xe - c) * k
         pp, qq = _envelope_derivatives(self.p, self.q, self.omega, order)[order]
         val = horner(list(pp), u)
@@ -141,11 +141,13 @@ class RSWAF(Basis):
     def size(self) -> int:
         return self.count
 
+    def param_specs(self):
+        return {"grid": ParamSpec(np.linspace(*self.grid_range, self.count), trainable=False)}
+
     def _eval(self, xe, order, p):
         xp = namespace(xe)
-        lo, hi = self.grid_range
-        h = (hi - lo) / (self.count - 1)
-        c = asarray_like(np.linspace(lo, hi, self.count), xe)
+        c = p["grid"]
+        h = (c[..., -1:] - c[..., :1]) / (self.count - 1)
         t = xp.tanh((xe - c) / h)
         poly = chain_polys(TANH_FACTOR, TANH_FACTOR, order)[order]  # sech^2 = 1 - t^2
         return horner(list(poly), t) / h**order
