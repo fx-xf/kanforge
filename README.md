@@ -13,8 +13,10 @@ Status: **phase 2** — 26 bases with exact derivatives of any order, trainable
 basis parameters shared per input, per group or per layer, GR-KAN (KAT) and
 MultKAN layers; per-input grids, grid update / refinement and conversion
 between any bases, pykan regularisation, DropKAN, variance-preserving
-initialisation and exact conversion of MLPs. Plain-ops implementation; fused
-kernels, interpretability and export are on the roadmap in [PLAN.md](PLAN.md).
+initialisation and exact conversion of MLPs; fused Metal kernels (PyTorch MPS,
+MLX) and Triton kernels (CUDA/ROCm) with derivatives of any order, up to 9x
+faster on Apple silicon — see [BENCHMARKS.md](BENCHMARKS.md). Interpretability
+and export are on the roadmap in [PLAN.md](PLAN.md).
 
 | Family | Bases |
 | --- | --- |
