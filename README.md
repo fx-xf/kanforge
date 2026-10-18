@@ -17,8 +17,10 @@ initialisation and exact conversion of MLPs; fused Metal kernels (PyTorch MPS,
 MLX) and Triton kernels (CUDA/ROCm) with derivatives of any order, up to 9x
 faster on Apple silicon — see [BENCHMARKS.md](BENCHMARKS.md); interpretability:
 tabulation, attribution, pruning, symbolic regression, formulas through SymPy
-and the kanpiler (formula -> KAN). Architecture blocks and export are on the
-roadmap in [PLAN.md](PLAN.md).
+and the kanpiler (formula -> KAN); blocks: KAN convolutions, KAT transformer
+blocks, exact KAN surgery of Hugging Face models, graph layers, recurrent
+cells, PINN tools, DeepONet, FBKAN and KAN-ODEs. Export (ONNX, Core ML, LUT)
+is next on the roadmap in [PLAN.md](PLAN.md).
 
 | Family | Bases |
 | --- | --- |
@@ -81,6 +83,16 @@ print(ki.symbolic_formula(pruned, ["x", "y"]))
 
 X, Y = sympy.symbols("x y")
 kan, col = ki.kanpile(sympy.exp(sympy.sin(sympy.pi * X) + Y**2), [X, Y])   # formula -> MultKAN
+```
+
+```python
+import transformers
+from kanforge.torch import KANConv2d, kanify, derivative
+
+model = transformers.AutoModelForCausalLM.from_pretrained("gpt2")
+kanify(model)                     # FFN projections -> KANLinear, same outputs, splines to fine-tune
+conv = KANConv2d(3, 16, 3, padding=1, basis="chebyshev")
+u_xx = derivative(net, x, order=2)  # PDE residual terms for PINNs
 ```
 
 ## Development

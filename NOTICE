@@ -22,6 +22,10 @@ No third-party source code is included at this time. Ideas are credited to:
 - pykan (MIT License): symbolic edges, auto_symbolic, attribution, pruning,
   kanpiler and the contrastive (unsupervised) mode; TruKAN (MIT License):
   fitting compiled edges by least squares.
+- Phase 5 blocks follow the papers of torch-conv-kan (MIT) and
+  Convolutional-KANs (KAN convolutions), KAT (MIT; GR-KAN FFN and weight
+  transfer), KAGNNs (graph layers), TKAN (recurrent KAN gates), DeepOKAN,
+  NeuroMANCER's FBKAN and KAN-ODEs; all written from the descriptions.
 
 Code borrowed later from permissively licensed projects will be listed here
 together with its original copyright and license.

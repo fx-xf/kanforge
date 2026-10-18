@@ -291,12 +291,15 @@ class GRKAN(KANLinear):
 class KAN(nn.Module):
     """Stack of ``KANLinear`` layers, e.g. ``KAN([2, 5, 1], basis="chebyshev")``."""
 
-    def __init__(self, widths: Sequence[int], basis: str | dict | Basis = "bspline", **layer_kwargs):
+    def __init__(self, widths: Sequence[int], basis: str | dict | Basis = "bspline", grid_ranges=None, **layer_kwargs):
         super().__init__()
         if len(widths) < 2:
             raise ValueError("widths needs at least input and output size")
         self.widths = list(widths)
-        self.layers = [KANLinear(a, b, basis, **layer_kwargs) for a, b in zip(widths[:-1], widths[1:])]
+        self.layers = [
+            KANLinear(a, b, basis, grid_ranges=grid_ranges if k == 0 else None, **layer_kwargs)
+            for k, (a, b) in enumerate(zip(widths[:-1], widths[1:]))
+        ]
 
     def __call__(self, x: mx.array) -> mx.array:
         for layer in self.layers:

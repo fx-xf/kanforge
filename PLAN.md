@@ -229,17 +229,34 @@ KANLib и TruKAN (сентябрь–октябрь 2026).
 - Дальше: дообучаемые параметры (a, b, c, d) символьных рёбер, `nsimplify`
   констант (3,1416 → π), прунинг MultKAN, конвертер KAN → дерево из KAN 2.0.
 
-### Фаза 5 — архитектурные блоки
+### Фаза 5 — архитектурные блоки ✅
 
-- Зрение: `KANConv1d/2d/3d` с любым базисом, остаточные блоки (RKAN),
-  U-Net-блоки (U-KAN), KAN-FFN для ViT (KAT).
-- Трансформеры: KAN-FFN с GR-KAN и замена MLP в моделях Hugging Face
-  с точной инициализацией.
-- Графы: KAGIN, KAGCN, KAGAT поверх PyG/DGL.
-- Ряды: рекуррентная KAN-ячейка (в духе TKAN), блоки частотного разложения (TimeKAN).
-- Наука: утилиты PINN (невязки, граничные условия), DeepONet на KAN,
-  KAN-оператор, KAN-ODE, FBKAN.
-- RL: политика и критик на KAN с заморозкой части параметров (опыт kanrl).
+Всё есть и в `kanforge.torch`, и в `kanforge.mlx` (кроме `kanify` — он для
+моделей PyTorch / Hugging Face).
+
+- **Свёртки** `KANConv1d/2d/3d`: каждый элемент ядра — функция ребра; stride,
+  padding (zeros/reflect/replicate/circular), dilation, groups. Признаки патча
+  упорядочены как веса `nn.ConvNd`, поэтому `from_conv(conv)` переносит
+  обычную свёртку точно (10⁻⁷). В MLX — каналы последними, как в `mlx.nn`.
+- **Трансформеры:** `KANFFN` (два KANLinear или два GR-KAN по KAT: первая
+  рациональная функция — тождество, вторая — GELU/SiLU), `KATBlock`.
+- **`kanify(model)`** — замена FFN в готовых моделях без привязки к классам HF:
+  fc1→act→fc2 (ViT, CLIP), GPT-2 (Conv1D), BERT (intermediate/output),
+  gated-FFN LLaMA/Mistral/Qwen (down_proj). `mode="exact"` — выход совпадает
+  побитно (проверено на GPT-2, BERT, LLaMA, ViT); `mode="grkan"` — перенос
+  весов KAT, расхождение 10⁻⁴–10⁻³.
+- **Графы** (`edge_index` как в PyG, без зависимости от PyG): `KAGINConv`,
+  `KAGCNConv` (нормированная A+I), `KAGATConv` (внимание, несколько голов).
+- **Рекуррентные:** `KANLSTMCell`, `KANGRUCell`, `KANRNN` (стек, batch first).
+- **Наука:** `derivative`/`gradient`/`laplacian` (функциональный API, граф
+  сохраняется для обучения), `sample_box`/`sample_boundary`, `DeepONet` (KAN
+  branch/trunk), `FBKAN` (подобласти с разбиением единицы, сетки KAN на своей
+  подобласти), `KANODE` (RK4, дифференцируемый). 1D Пуассон решается
+  PINN-ом [1,6,1] с ошибкой 2·10⁻⁴.
+- Найдено попутно: `KAN(grid_ranges=…)` раздавал диапазоны входов всем слоям —
+  теперь только первому.
+- Дальше: U-KAN-блоки (токенизированный KAN в U-Net), TimeKAN (частотное
+  разложение рядов), KAN-оператор (KANO), помощники для RL.
 
 ### Фаза 6 — JAX
 

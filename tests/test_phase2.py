@@ -298,3 +298,9 @@ def test_layer_moves_between_devices_and_dtypes():
     x = torch.rand(8, 3, dtype=torch.float64) - 0.5
     layer.double().update_grid(x)
     assert layer.basis_grid.dtype == torch.float64
+
+
+def test_kan_grid_ranges_apply_to_the_first_layer_only():
+    model = KAN([2, 3, 1], kf.BSpline(4, 3), grid_ranges=[(0, 4), (-2, 2)])
+    np.testing.assert_allclose(model[0].basis_grid[:, [0, -1]].numpy(), [[0, 4], [-2, 2]])
+    np.testing.assert_allclose(model[1].basis_grid[:, [0, -1]].numpy(), [[-1, 1]] * 3)

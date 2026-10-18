@@ -360,13 +360,20 @@ class GRKAN(KANLinear):
 
 
 class KAN(nn.Sequential):
-    """Stack of ``KANLinear`` layers, e.g. ``KAN([2, 5, 1], basis="chebyshev")``."""
+    """Stack of ``KANLinear`` layers, e.g. ``KAN([2, 5, 1], basis="chebyshev")``.
 
-    def __init__(self, widths: Sequence[int], basis: str | dict | Basis = "bspline", **layer_kwargs):
+    ``grid_ranges`` (one (lo, hi) per model input) sets the grids of the first
+    layer; hidden layers keep the basis default (adapt them with ``update_grid``).
+    """
+
+    def __init__(self, widths: Sequence[int], basis: str | dict | Basis = "bspline", grid_ranges=None, **layer_kwargs):
         if len(widths) < 2:
             raise ValueError("widths needs at least input and output size")
         super().__init__(
-            *(KANLinear(a, b, basis, **layer_kwargs) for a, b in zip(widths[:-1], widths[1:]))
+            *(
+                KANLinear(a, b, basis, grid_ranges=grid_ranges if k == 0 else None, **layer_kwargs)
+                for k, (a, b) in enumerate(zip(widths[:-1], widths[1:]))
+            )
         )
         self.widths = list(widths)
 

@@ -10,6 +10,6 @@ from . import bases
 from .bases import *  # noqa: F401,F403
 from .bases import __all__ as _bases_all
 
-__version__ = "0.4.0.dev0"
+__version__ = "0.5.0.dev0"
 
 __all__ = [*_bases_all, "bases", "__version__"]
