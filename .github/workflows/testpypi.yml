@@ -1,0 +1,26 @@
+name: testpypi
+
+# Manual publish to TestPyPI with trusted publishing (no tokens).
+# Setup on test.pypi.org: Account settings -> Publishing -> add a pending
+# publisher: project "kanforge", owner "fx-xf", repository "kanforge",
+# workflow "testpypi.yml", environment left empty.
+# Run: gh workflow run testpypi.yml
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          repository-url: https://test.pypi.org/legacy/
