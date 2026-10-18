@@ -12,6 +12,7 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     permissions:
+      contents: read  # private repository: checkout needs it once permissions are listed
       id-token: write
     steps:
       - uses: actions/checkout@v4

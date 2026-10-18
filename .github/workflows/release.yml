@@ -30,6 +30,7 @@ jobs:
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
+      contents: read  # private repository: checkout needs it once permissions are listed
       id-token: write
     steps:
       - uses: actions/download-artifact@v4
