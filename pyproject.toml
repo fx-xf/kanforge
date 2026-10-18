@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kanforge"
-version = "0.7.0.dev0"
+version = "0.8.0"
 description = "Kolmogorov–Arnold Networks for every backend: NumPy reference, PyTorch (CUDA/MPS/CPU), Apple MLX and JAX."
 readme = "README.md"
 license = "Apache-2.0"
@@ -12,10 +12,27 @@ license-files = ["LICENSE", "NOTICE"]
 requires-python = ">=3.10"
 authors = [{ name = "fx-xf" }]
 dependencies = ["numpy>=1.26"]
+keywords = ["kan", "kolmogorov-arnold", "neural networks", "pytorch", "mlx", "jax", "splines", "symbolic regression", "pinn", "fpga"]
 classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
+    "Typing :: Typed",
 ]
+
+[project.urls]
+Homepage = "https://github.com/fx-xf/kanforge"
+Documentation = "https://github.com/fx-xf/kanforge/tree/main/docs"
+Changelog = "https://github.com/fx-xf/kanforge/blob/main/CHANGELOG.md"
+Issues = "https://github.com/fx-xf/kanforge/issues"
 
 [project.optional-dependencies]
 torch = ["torch>=2.2"]
@@ -26,10 +43,14 @@ hf = ["transformers>=4.40"]
 jax = ["jax>=0.4.30", "flax>=0.12"]
 export = ["onnx>=1.15", "onnxruntime>=1.17"]
 coreml = ["coremltools>=8.0"]
-test = ["pytest>=8", "scipy>=1.11", "sympy>=1.12", "matplotlib>=3.7", "transformers>=4.40"]
+test = ["pytest>=8", "scipy>=1.11", "sympy>=1.12", "matplotlib>=3.7", "transformers>=4.40", "scikit-learn>=1.3"]
+docs = ["mkdocs-material>=9.5", "mkdocstrings[python]>=0.25"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["kanforge"]
+
+[tool.hatch.build.targets.sdist]
+include = ["kanforge", "tests", "examples", "benchmarks", "docs", "mkdocs.yml", "README.md", "CHANGELOG.md", "PLAN.md", "BENCHMARKS.md", "LICENSE", "NOTICE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

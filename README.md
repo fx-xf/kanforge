@@ -10,20 +10,20 @@ functions and one parameter layout:
 | MLX | `kanforge.mlx` | Apple silicon GPU/CPU |
 | JAX (Flax NNX) | `kanforge.jax` | CPU, CUDA/ROCm GPU, TPU |
 
-Status: **phase 2** — 26 bases with exact derivatives of any order, trainable
+Status: **0.8.0** — 26 bases with exact derivatives of any order, trainable
 basis parameters shared per input, per group or per layer, GR-KAN (KAT) and
 MultKAN layers; per-input grids, grid update / refinement and conversion
 between any bases, pykan regularisation, DropKAN, variance-preserving
 initialisation and exact conversion of MLPs; fused Metal kernels (PyTorch MPS,
 MLX) and Triton kernels (CUDA/ROCm) with derivatives of any order, up to 9x
-faster on Apple silicon — see [BENCHMARKS.md](BENCHMARKS.md); interpretability:
+faster on Apple silicon — see [BENCHMARKS.md](https://github.com/fx-xf/kanforge/blob/main/BENCHMARKS.md); interpretability:
 tabulation, attribution, pruning, symbolic regression, formulas through SymPy
 and the kanpiler (formula -> KAN); blocks: KAN convolutions, KAT transformer
 blocks, exact KAN surgery of Hugging Face models, graph layers, recurrent
 cells, PINN tools, DeepONet, FBKAN and KAN-ODEs; a JAX backend on Flax NNX
 with Pallas kernels; deployment: weight conversion and files between backends,
 lookup tables with int8, ONNX, Core ML and Verilog for FPGAs. Release work
-is next on the roadmap in [PLAN.md](PLAN.md).
+is next on the roadmap in [PLAN.md](https://github.com/fx-xf/kanforge/blob/main/PLAN.md).
 
 | Family | Bases |
 | --- | --- |
@@ -110,6 +110,13 @@ export_onnx(model, "model.onnx", x, size=256, bits=8)   # int8 lookup tables
 fpga.export_fpga(model, "rtl/", x, address_bits=8, value_bits=8)
 ```
 
+## When to use KANs
+
+At equal FLOPs (KANbeFair methodology, `benchmarks/fair_comparison.py`) KANs
+were 5–60x more accurate than MLPs on symbolic formulas and smooth tabular
+regression, and slightly worse on digit classification. Details in the
+[documentation](https://github.com/fx-xf/kanforge/blob/main/docs/benchmarks.md).
+
 ## Development
 
 ```bash
@@ -120,4 +127,4 @@ python3.12 -m venv .venv
 
 ## License
 
-Apache-2.0. See [NOTICE](NOTICE) for third-party attributions.
+Apache-2.0. See [NOTICE](https://github.com/fx-xf/kanforge/blob/main/NOTICE) for third-party attributions.

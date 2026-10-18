@@ -122,9 +122,9 @@ class KANLinear(GridToolsMixin, InterpretMixin, nn.Module):
             delattr(self, f"basis_{name}")
         like = {"dtype": self.coef.dtype, "device": self.coef.device}
         for name, value in trainable.items():
-            self.register_parameter(f"basis_{name}", nn.Parameter(torch.as_tensor(value, **like)))
+            self.register_parameter(f"basis_{name}", nn.Parameter(torch.as_tensor(np.ascontiguousarray(value), **like)))
         for name, value in buffers.items():
-            self.register_buffer(f"basis_{name}", torch.as_tensor(value, **like))
+            self.register_buffer(f"basis_{name}", torch.as_tensor(np.ascontiguousarray(value), **like))
         self._trainable_names, self._buffer_names = list(trainable), list(buffers)
         self._plan = plan_for(self.basis)
 
@@ -179,7 +179,9 @@ class KANLinear(GridToolsMixin, InterpretMixin, nn.Module):
             y = _kernels.spline_forward(x, self.effective_coef(), grid, self._plan)
         else:
             # (..., in, n) -> (..., in*n) @ (in*n, out): one GEMM, as in efficient-kan.
-            y = self.basis(x, self.basis_params()).flatten(-2) @ self.effective_coef().flatten(1).T
+            # F.linear rather than "@ W.T": the gradient of a transposed view is
+            # non-contiguous, which breaks optimisers that flatten grads (LBFGS).
+            y = F.linear(self.basis(x, self.basis_params()).flatten(-2), self.effective_coef().flatten(1))
         if self.base_weight is not None:
             y = y + F.linear(self.base_activation(x), self.effective_base_weight())
         sym = self._symbolic_part(x)
@@ -276,9 +278,11 @@ class KANLinear(GridToolsMixin, InterpretMixin, nn.Module):
         like = {"dtype": self.coef.dtype, "device": self.coef.device}
         self.basis = basis
         self._init_kwargs["basis"] = basis
-        self.coef = nn.Parameter(torch.as_tensor(coef, **like))
+        # contiguous: refit results are transposed NumPy views, and a parameter
+        # with transposed strides gets transposed grads (LBFGS needs contiguous)
+        self.coef = nn.Parameter(torch.as_tensor(np.ascontiguousarray(coef), **like))
         if edge_scale is not None:
-            self.edge_scale = nn.Parameter(torch.as_tensor(edge_scale, **like))
+            self.edge_scale = nn.Parameter(torch.as_tensor(np.ascontiguousarray(edge_scale), **like))
         self._set_basis_state(trainable, buffers)
 
     # --- construction from MLPs -------------------------------------------

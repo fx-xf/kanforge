@@ -91,3 +91,27 @@ def test_kan_fits_1d_function():
 def test_kan_requires_two_widths():
     with pytest.raises(ValueError):
         KAN([3])
+
+
+def test_lbfgs_works_without_extra_loss_terms():
+    # coef grads used to be non-contiguous (transposed view), breaking LBFGS
+    torch.manual_seed(0)
+    for basis in BASES:
+        model = KAN([2, 3, 1], basis)
+        x = torch.rand(64, 2) * 2 - 1
+        opt = torch.optim.LBFGS(model.parameters(), lr=1, line_search_fn="strong_wolfe")
+
+        def closure():
+            opt.zero_grad()
+            loss = model(x).pow(2).mean()
+            loss.backward()
+            return loss
+
+        opt.step(closure)
+        assert all(p.grad is None or p.grad.is_contiguous() for p in model.parameters())
+    # parameters rebuilt by grid tools must stay contiguous too
+    model = KAN([2, 3, 1], BSpline(5, 3))
+    model.update_grid(torch.rand(64, 2) * 2 - 1)
+    model.refine_grid(8)
+    model[0].change_basis(Chebyshev(6))
+    assert all(p.is_contiguous() for p in model.parameters())

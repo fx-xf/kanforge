@@ -13,6 +13,6 @@ from .bases import __all__ as _bases_all
 from . import convert
 from .convert import load, save
 
-__version__ = "0.7.0.dev0"
+__version__ = "0.8.0"
 
 __all__ = [*_bases_all, "bases", "convert", "load", "save", "__version__"]  # convert: the module

@@ -1,0 +1,66 @@
+site_name: kanforge
+site_description: Kolmogorov–Arnold Networks for every backend
+repo_url: https://github.com/fx-xf/kanforge
+theme:
+  name: material
+  features: [navigation.sections, navigation.top, content.code.copy]
+  palette:
+    - scheme: default
+      toggle: {icon: material/brightness-7, name: Dark mode}
+    - scheme: slate
+      toggle: {icon: material/brightness-4, name: Light mode}
+nav:
+  - Home: index.md
+  - Installation: install.md
+  - Quickstart: quickstart.md
+  - Guide:
+      - Bases: guide/bases.md
+      - Layers and backends: guide/layers.md
+      - Training: guide/training.md
+      - Fused kernels: guide/kernels.md
+      - Interpretation: guide/interpretation.md
+      - Architecture blocks: guide/blocks.md
+      - JAX: guide/jax.md
+      - Deployment: guide/export.md
+  - Tutorials:
+      - Overview: tutorials/index.md
+      - Regression: tutorials/regression.md
+      - Formula discovery: tutorials/formula.md
+      - PDEs with PINNs: tutorials/pinn.md
+      - Operator learning: tutorials/operator.md
+      - Images: tutorials/images.md
+      - Transformers: tutorials/transformers.md
+      - Graphs: tutorials/graphs.md
+      - Time series: tutorials/time_series.md
+      - Neural ODEs: tutorials/ode.md
+      - Reinforcement learning: tutorials/rl.md
+      - Deployment: tutorials/deploy.md
+      - Backends: tutorials/backends.md
+  - Benchmarks: benchmarks.md
+  - API reference:
+      - Bases: api/bases.md
+      - PyTorch: api/torch.md
+      - MLX: api/mlx.md
+      - JAX: api/jax.md
+      - Interpretation: api/interpret.md
+      - Export and conversion: api/export.md
+  - Changelog: changelog.md
+plugins:
+  - search
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [.]
+          options:
+            docstring_style: google
+            show_source: false
+            show_root_heading: true
+            members_order: source
+            merge_init_into_class: true
+markdown_extensions:
+  - admonition
+  - tables
+  - toc: {permalink: true}
+  - pymdownx.superfences
+  - pymdownx.highlight
+  - pymdownx.snippets: {base_path: ["."], check_paths: true}

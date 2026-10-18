@@ -53,3 +53,29 @@ jobs:
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install -e ".[test]"
       - run: python -m pytest -q tests/test_export.py -k fpga -rs
+
+  # Documentation must build without warnings (broken links, missing snippets, bad API refs).
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e ".[docs]"
+      - run: mkdocs build --strict
+
+  # The package builds, passes twine's checks and installs from the wheel.
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install build twine
+      - run: python -m build
+      - run: twine check --strict dist/*
+      - run: |
+          python -m venv /tmp/wheel && /tmp/wheel/bin/pip install dist/*.whl
+          cd /tmp && /tmp/wheel/bin/python -I -c "import kanforge, numpy as np; print(kanforge.__version__, kanforge.BSpline(5, 3)(np.zeros((2, 1))).shape)"
