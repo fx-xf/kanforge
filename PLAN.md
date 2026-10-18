@@ -258,9 +258,26 @@ KANLib и TruKAN (сентябрь–октябрь 2026).
 - Дальше: U-KAN-блоки (токенизированный KAN в U-Net), TimeKAN (частотное
   разложение рядов), KAN-оператор (KANO), помощники для RL.
 
-### Фаза 6 — JAX
+### Фаза 6 — JAX ✅
 
-- Бэкенд `kanforge.jax` (Flax NNX), ядра на Pallas (GPU и TPU).
+- **Базисы** работают на `jax.numpy` без изменений (адаптер `_xp`): все 26,
+  сверены с NumPy и `jax.grad`.
+- **`kanforge.jax`** на Flax NNX: `KANLinear`, `KAN`, `GRKAN`, `MultKANLinear`,
+  `MultKAN`, `from_mlp`, `regularization`, `layer_inputs`. Обучаемое — `nnx.Param`,
+  сетки, маски и символьные рёбра — `Buffer` (не попадают в градиенты и
+  оптимизатор). Значения и производные совпадают с torch до 10⁻¹⁰, имена
+  `state_dict` те же (`load_state_dict` принимает веса torch). Работают
+  `nnx.jit`, сетки (`update_grid`/`refine_grid`/`change_basis`), DropKAN
+  (`rngs`, `model.eval()`), весь `kanforge.interpret`.
+- **Pallas-ядра** F/G/P на `jax.custom_vjp` (замкнутое семейство — `jax.grad`
+  любой вложенности), признаки и свёртка производных как у Metal/Triton,
+  IEEE float32 (без TF32). Проверены в интерпретаторе Pallas и на RTX 3060 (10⁻⁷).
+- **Скорость:** XLA сам хорошо сливает обычный путь, первые ядра Pallas в
+  2–10 раз медленнее (BENCHMARKS.md), поэтому `auto` в JAX их не включает.
+- Требования: `flax>=0.12` (Python ≥ 3.11). На сервере с Python 3.10 стоит
+  JAX 0.6.2 — ядра Pallas проверены там, слои NNX — локально и в CI.
+- Дальше: ядра Pallas с блоком по нескольким входам и векторной загрузкой
+  сетки (чтобы догнать XLA), Mosaic/TPU, проверка на ROCm.
 
 ### Фаза 7 — выгрузка и edge
 

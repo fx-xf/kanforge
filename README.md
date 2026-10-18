@@ -8,6 +8,7 @@ functions and one parameter layout:
 | NumPy (float64 reference) | `kanforge.reference` | CPU |
 | PyTorch | `kanforge.torch` | CUDA, ROCm, Apple MPS, CPU |
 | MLX | `kanforge.mlx` | Apple silicon GPU/CPU |
+| JAX (Flax NNX) | `kanforge.jax` | CPU, CUDA/ROCm GPU, TPU |
 
 Status: **phase 2** — 26 bases with exact derivatives of any order, trainable
 basis parameters shared per input, per group or per layer, GR-KAN (KAT) and
@@ -19,8 +20,9 @@ faster on Apple silicon — see [BENCHMARKS.md](BENCHMARKS.md); interpretability
 tabulation, attribution, pruning, symbolic regression, formulas through SymPy
 and the kanpiler (formula -> KAN); blocks: KAN convolutions, KAT transformer
 blocks, exact KAN surgery of Hugging Face models, graph layers, recurrent
-cells, PINN tools, DeepONet, FBKAN and KAN-ODEs. Export (ONNX, Core ML, LUT)
-is next on the roadmap in [PLAN.md](PLAN.md).
+cells, PINN tools, DeepONet, FBKAN and KAN-ODEs; a JAX backend on Flax NNX
+with Pallas kernels. Export (ONNX, Core ML, LUT) is next on the roadmap in
+[PLAN.md](PLAN.md).
 
 | Family | Bases |
 | --- | --- |

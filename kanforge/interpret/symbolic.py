@@ -120,7 +120,7 @@ def symbolic_formula(model, names=None, digits: int | None = 4, simplify: bool =
     first = layers[0]
     n_in = first.kan.in_features if isinstance(first, b.MultKANLinear) else getattr(first, "in_features", None)
     if n_in is None:
-        n_in = to_numpy(first.weight).shape[1]
+        n_in = to_numpy(first.weight).shape[1] if hasattr(first, "weight") else to_numpy(first.kernel).shape[0]
     names = names or [f"x_{k + 1}" for k in range(n_in)]
     exprs = [sympy.Symbol(nm) for nm in names]
     missing_all = []
@@ -131,8 +131,8 @@ def symbolic_formula(model, names=None, digits: int | None = 4, simplify: bool =
             sub, missing = _kan_layer_exprs(layer.kan, exprs, tol)
             prods = [sympy.Mul(*sub[layer.n_sum + k * layer.arity : layer.n_sum + (k + 1) * layer.arity]) for k in range(layer.n_mult)]
             exprs = sub[: layer.n_sum] + prods
-        elif hasattr(layer, "weight"):  # Linear
-            w = to_numpy(layer.weight)
+        elif hasattr(layer, "weight") or hasattr(layer, "kernel"):  # Linear (torch, MLX) or nnx.Linear
+            w = to_numpy(layer.weight) if hasattr(layer, "weight") else to_numpy(layer.kernel).T
             bias = getattr(layer, "bias", None)
             bias = np.zeros(w.shape[0]) if bias is None else to_numpy(bias)
             exprs = [float(bias[o]) + sum(_affine(float(w[o, i]), exprs[i]) for i in range(w.shape[1])) for o in range(w.shape[0])]

@@ -62,6 +62,31 @@ RTX 3060 12 GB, driver 535, PyTorch 2.6.0+cu124, Triton 3.2.0, idle GPU — 18.1
 | fourier 4 | 8192x128x128 | 1.41 ms | 4.40 ms | 3.76 ms | 10.64 ms |
 | fourier 4 | 32768x64x64 | 2.53 ms | 4.46 ms | 6.30 ms | 11.57 ms |
 
+## JAX (Pallas)
+
+RTX 3060, JAX 0.6.2 (CUDA 12), idle GPU, 18.10.2026 — `benchmarks/bench_jax.py`,
+both paths jit-compiled with IEEE float32 products. fwd+bwd = gradient with
+respect to coefficients and input.
+
+| basis | batch x in x out | fwd ops | fwd kernel | fwd+bwd ops | fwd+bwd kernel |
+|---|---|---|---|---|---|
+| bspline G8 k3 | 1024x64x64 | 0.15 ms | 0.43 ms | 0.39 ms | 1.00 ms |
+| bspline G8 k3 | 8192x128x128 | 1.20 ms | 8.02 ms | 4.78 ms | 20.68 ms |
+| bspline G8 k3 | 32768x64x64 | 1.90 ms | 7.52 ms | 8.30 ms | 21.74 ms |
+| chebyshev d8 | 1024x64x64 | 0.10 ms | 0.15 ms | 0.17 ms | 0.45 ms |
+| chebyshev d8 | 8192x128x128 | 0.60 ms | 1.88 ms | 1.72 ms | 10.82 ms |
+| chebyshev d8 | 32768x64x64 | 0.95 ms | 1.85 ms | 2.16 ms | 10.99 ms |
+| rbf 8 | 1024x64x64 | 0.09 ms | 0.17 ms | 0.23 ms | 0.49 ms |
+| rbf 8 | 8192x128x128 | 0.51 ms | 2.53 ms | 1.49 ms | 12.24 ms |
+| rbf 8 | 32768x64x64 | 0.75 ms | 2.44 ms | 1.74 ms | 12.15 ms |
+| fourier 4 | 1024x64x64 | 0.09 ms | 0.39 ms | 0.17 ms | 0.89 ms |
+| fourier 4 | 8192x128x128 | 0.51 ms | 7.65 ms | 1.73 ms | 19.30 ms |
+| fourier 4 | 32768x64x64 | 0.72 ms | 7.21 ms | 2.40 ms | 20.20 ms |
+
+XLA fuses the plain path very well (B-splines: 1.9 ms here vs 16 ms for plain
+PyTorch on the same GPU); the first Pallas kernels (a loop over inputs with
+scalar knot loads) are 2–10x slower, so `auto` never uses them in JAX.
+
 ## What `backend="auto"` does with this
 
 `kanforge.kernels.plan.AUTO_KINDS`: the kernel only where it won both columns.
@@ -72,6 +97,7 @@ RTX 3060 12 GB, driver 535, PyTorch 2.6.0+cu124, Triton 3.2.0, idle GPU — 18.1
 - Chebyshev-family polynomials and Fourier: plain ops by default; on MPS the
   kernel is about even for small batches and 2x faster for 32k rows, choose
   it with `backend="kernel"`.
+- JAX: never (plain XLA is faster, see above); `backend="kernel"` still runs Pallas.
 - CUDA (Triton): B-splines (1.2–2.2x on fwd+bwd). Chebyshev and RBF win only
   for large batches, Fourier is 2–3x slower than cuBLAS + fused cos/sin.
   Correctness: the full suite passes on the RTX 3060 (and in CI under the

@@ -31,7 +31,9 @@ ONE_MINUS_Z2 = np.array([0.5, 0.0, -0.5])  # 1 - z^2 in the Chebyshev basis
 # benchmarks/bench_kernels.py (Apple M5 for MPS/MLX, RTX 3060 for CUDA; see
 # BENCHMARKS.md): only where the kernel was faster than plain ops for forward
 # and forward+backward.
-AUTO_KINDS = {"mps": ("bspline", "bump"), "mlx": ("bspline",), "cuda": ("bspline",)}
+# JAX: XLA already fuses the plain path well; the Pallas kernels were 2-10x
+# slower on an RTX 3060, so "auto" never picks them (backend="kernel" does).
+AUTO_KINDS = {"mps": ("bspline", "bump"), "mlx": ("bspline",), "cuda": ("bspline",), "jax-gpu": (), "jax-tpu": ()}
 
 
 @dataclass(frozen=True)

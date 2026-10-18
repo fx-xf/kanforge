@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "kanforge"
-version = "0.5.0.dev0"
-description = "Kolmogorov–Arnold Networks for every backend: NumPy reference, PyTorch (CUDA/MPS/CPU) and Apple MLX."
+version = "0.6.0.dev0"
+description = "Kolmogorov–Arnold Networks for every backend: NumPy reference, PyTorch (CUDA/MPS/CPU), Apple MLX and JAX."
 readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE", "NOTICE"]
@@ -23,6 +23,7 @@ mlx = ["mlx>=0.20; sys_platform == 'darwin' and platform_machine == 'arm64'"]
 symbolic = ["sympy>=1.12"]
 plot = ["matplotlib>=3.7"]
 hf = ["transformers>=4.40"]
+jax = ["jax>=0.4.30", "flax>=0.12"]
 test = ["pytest>=8", "scipy>=1.11", "sympy>=1.12", "matplotlib>=3.7", "transformers>=4.40"]
 
 [tool.hatch.build.targets.wheel]

@@ -10,7 +10,7 @@ from __future__ import annotations
 
 
 def namespace(x):
-    """Return the array module (numpy, torch or mlx.core) that owns ``x``."""
+    """Return the array module (numpy, torch, mlx.core or jax.numpy) that owns ``x``."""
     mod = type(x).__module__
     if mod.startswith("torch"):
         import torch
@@ -20,6 +20,10 @@ def namespace(x):
         import mlx.core as mx
 
         return mx
+    if mod.startswith(("jax", "jaxlib")):  # arrays and tracers
+        import jax.numpy as jnp
+
+        return jnp
     import numpy as np
 
     return np

@@ -11,9 +11,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            extras: torch,test
+            extras: torch,jax,test
           - os: macos-14
-            extras: torch,mlx,test
+            extras: torch,mlx,jax,test
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4

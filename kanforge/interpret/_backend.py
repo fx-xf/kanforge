@@ -25,10 +25,32 @@ def backend_of(model):
             return backend
     except ImportError:
         pass
-    raise TypeError(f"not a PyTorch or MLX model: {type(model).__name__}")
+    try:
+        from flax import nnx
+
+        if isinstance(model, nnx.Module):
+            from .. import jax as backend
+
+            return backend
+    except ImportError:
+        pass
+    raise TypeError(f"not a PyTorch, MLX or JAX (Flax NNX) model: {type(model).__name__}")
+
+
+def _unwrap(x):
+    """The array inside a Flax NNX variable, else ``x``."""
+    try:
+        from flax import nnx
+
+        if isinstance(x, nnx.Variable):
+            return x[...]
+    except ImportError:
+        pass
+    return x
 
 
 def to_numpy(x) -> np.ndarray:
+    x = _unwrap(x)
     if hasattr(x, "detach"):
         return x.detach().cpu().double().numpy()
     return np.array(x, dtype=np.float64)
@@ -36,11 +58,15 @@ def to_numpy(x) -> np.ndarray:
 
 def like(layer, value: np.ndarray):
     """``value`` as an array of the layer's backend, dtype and device."""
-    coef = layer.coef
+    coef = _unwrap(layer.coef)
     if hasattr(coef, "detach"):
         import torch
 
         return torch.as_tensor(value, dtype=coef.dtype, device=coef.device)
+    if type(coef).__module__.startswith(("jax", "jaxlib")):
+        import jax.numpy as jnp
+
+        return jnp.asarray(value, dtype=coef.dtype)
     import mlx.core as mx
 
     return mx.array(np.asarray(value, dtype=np.float32))
