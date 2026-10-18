@@ -105,6 +105,7 @@ from kanforge.export.onnx_export import export_onnx
 
 kanforge.save(model, "model.npz")                 # any backend
 jax_model = kanforge.load("model.npz", backend="jax")
+mlx_model = kanforge.convert.convert(model, "mlx")
 export_onnx(model, "model.onnx", x, size=256, bits=8)   # int8 lookup tables
 fpga.export_fpga(model, "rtl/", x, address_bits=8, value_bits=8)
 ```
