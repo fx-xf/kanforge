@@ -26,6 +26,8 @@ No third-party source code is included at this time. Ideas are credited to:
   Convolutional-KANs (KAN convolutions), KAT (MIT; GR-KAN FFN and weight
   transfer), KAGNNs (graph layers), TKAN (recurrent KAN gates), DeepOKAN,
   NeuroMANCER's FBKAN and KAN-ODEs; all written from the descriptions.
+- The FPGA lookup-table design follows the ideas of KANELÉ (arXiv:2512.12850)
+  and BiKA (arXiv:2602.23455); the implementation is original.
 
 Code borrowed later from permissively licensed projects will be listed here
 together with its original copyright and license.

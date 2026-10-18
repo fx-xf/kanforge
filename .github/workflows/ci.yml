@@ -11,9 +11,9 @@ jobs:
       matrix:
         include:
           - os: ubuntu-latest
-            extras: torch,jax,test
+            extras: torch,jax,export,test
           - os: macos-14
-            extras: torch,mlx,jax,test
+            extras: torch,mlx,jax,export,coreml,test
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -40,3 +40,16 @@ jobs:
       - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
       - run: pip install triton -e ".[test]"
       - run: python -m pytest -q tests/test_kernels.py
+
+  # Generated Verilog against the bit-exact model: Icarus Verilog simulation.
+  fpga-rtl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: sudo apt-get update && sudo apt-get install -y iverilog
+      - run: pip install torch --index-url https://download.pytorch.org/whl/cpu
+      - run: pip install -e ".[test]"
+      - run: python -m pytest -q tests/test_export.py -k fpga -rs

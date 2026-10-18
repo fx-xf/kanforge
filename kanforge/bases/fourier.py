@@ -6,7 +6,7 @@ import math
 
 import numpy as np
 
-from .._xp import arange_like, asarray_like, namespace
+from .._xp import arange_like, asarray_like, concat, namespace
 from .base import Basis, ParamSpec
 
 
@@ -40,7 +40,7 @@ class Fourier(Basis):
             w = w * p["frequency_scale"]
         a = xe * w + order * (math.pi / 2)  # d/dx cos(wx) = w cos(wx + pi/2)
         wm = w**order
-        return xp.concatenate([wm * xp.cos(a), wm * xp.sin(a)], -1)
+        return concat([wm * xp.cos(a), wm * xp.sin(a)], -1)
 
     def config(self):
         return {

@@ -15,7 +15,7 @@ from numpy.polynomial import legendre as L
 from numpy.polynomial import polynomial as P
 
 from .._calculus import falling, horner, quotient
-from .._xp import arange_like, cast_like, namespace, relu, softplus
+from .._xp import arange_like, cast_like, concat, namespace, relu, softplus
 from .base import Basis, ParamSpec, _check_range
 
 
@@ -27,7 +27,7 @@ def extend_grid(grid, k: int):
     i = arange_like(k, grid)
     left = grid[..., :1] - h * (k - i)
     right = grid[..., -1:] + h * (i + 1)
-    return namespace(grid).concatenate([left, grid, right], -1)
+    return concat([left, grid, right], -1)
 
 
 class _Gridded(Basis):
@@ -191,7 +191,7 @@ class TruncatedPower(Basis):
             trunc = falling(k, order) * scale**order * cast_like(v > 0, v)
         else:
             trunc = falling(k, order) * scale**order * v ** (k - order)
-        return xp.concatenate([*polys, trunc], -1)
+        return concat([*polys, trunc], -1)
 
     def config(self):
         return {

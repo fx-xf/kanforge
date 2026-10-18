@@ -21,8 +21,9 @@ tabulation, attribution, pruning, symbolic regression, formulas through SymPy
 and the kanpiler (formula -> KAN); blocks: KAN convolutions, KAT transformer
 blocks, exact KAN surgery of Hugging Face models, graph layers, recurrent
 cells, PINN tools, DeepONet, FBKAN and KAN-ODEs; a JAX backend on Flax NNX
-with Pallas kernels. Export (ONNX, Core ML, LUT) is next on the roadmap in
-[PLAN.md](PLAN.md).
+with Pallas kernels; deployment: weight conversion and files between backends,
+lookup tables with int8, ONNX, Core ML and Verilog for FPGAs. Release work
+is next on the roadmap in [PLAN.md](PLAN.md).
 
 | Family | Bases |
 | --- | --- |
@@ -95,6 +96,17 @@ model = transformers.AutoModelForCausalLM.from_pretrained("gpt2")
 kanify(model)                     # FFN projections -> KANLinear, same outputs, splines to fine-tune
 conv = KANConv2d(3, 16, 3, padding=1, basis="chebyshev")
 u_xx = derivative(net, x, order=2)  # PDE residual terms for PINNs
+```
+
+```python
+import kanforge
+from kanforge.export import fpga
+from kanforge.export.onnx_export import export_onnx
+
+kanforge.save(model, "model.npz")                 # any backend
+jax_model = kanforge.load("model.npz", backend="jax")
+export_onnx(model, "model.onnx", x, size=256, bits=8)   # int8 lookup tables
+fpga.export_fpga(model, "rtl/", x, address_bits=8, value_bits=8)
 ```
 
 ## Development

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from .._xp import namespace
+from .._xp import concat
 from .base import Basis, make_basis
 from .radial import RBF
 from .spline import BSpline
@@ -42,7 +42,7 @@ class Concat(Basis):
             prefix = f"{i}_"
             sub = {k[len(prefix) :]: v for k, v in p.items() if k.startswith(prefix)}
             parts.append(b._eval(xe, order, sub))
-        return namespace(xe).concatenate(parts, -1)
+        return concat(parts, -1)
 
     def config(self):
         return {"name": self.name, "bases": [b.config() for b in self.bases]}

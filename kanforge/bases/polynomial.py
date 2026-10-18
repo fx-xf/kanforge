@@ -21,7 +21,7 @@ from numpy.polynomial import laguerre as La
 from numpy.polynomial import legendre as Le
 
 from .._calculus import TANH_FACTOR, chain_polys, faa_di_bruno, horner
-from .._xp import asarray_like, log_sigmoid, namespace, sigmoid
+from .._xp import asarray_like, concat, log_sigmoid, namespace, sigmoid
 from .base import Basis, ParamSpec
 
 INPUT_MAPS = ("tanh", "identity", "fractional")
@@ -93,7 +93,7 @@ class PolynomialBasis(Basis):
             ts.append(z)
         for _ in range(2, self.degree + 1):
             ts.append(2 * z * ts[-1] - ts[-2])
-        t = xp.concatenate(ts, -1)
+        t = concat(ts, -1)
         outer = []
         for k in range(order + 1):
             a = self._cheb_der(k)

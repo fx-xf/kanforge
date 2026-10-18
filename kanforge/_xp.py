@@ -77,3 +77,12 @@ def softplus(x):
 
 def log_sigmoid(x):
     return -softplus(-x)
+
+
+def concat(arrays, axis: int = -1):
+    """Concatenate along ``axis``. torch uses ``torch.cat``: its alias
+    ``torch.concatenate`` traces to an op Core ML's converter does not know."""
+    xp = namespace(arrays[0])
+    if xp.__name__ == "torch":
+        return xp.cat(arrays, axis)
+    return xp.concatenate(arrays, axis)
