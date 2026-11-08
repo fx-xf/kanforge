@@ -12,7 +12,7 @@ jobs:
         include:
           - os: ubuntu-latest
             extras: torch,jax,export,test
-          - os: macos-14
+          - os: macos-15
             extras: torch,mlx,jax,export,coreml,test
     runs-on: ${{ matrix.os }}
     steps:
