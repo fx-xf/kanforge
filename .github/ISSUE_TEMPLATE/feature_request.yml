@@ -1,0 +1,11 @@
+name: Feature request
+description: A basis, block, kernel or exporter you would like to see.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What and why
+      description: What you want to do, and a paper or reference implementation if there is one (with its licence).
+    validations:
+      required: true

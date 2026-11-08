@@ -1,8 +1,8 @@
 # Changelog
 
-## 0.8.0 — first public release (unreleased)
+## 0.8.0 — first public release
 
-Everything below was built in phases 0–8 of [PLAN.md](https://github.com/fx-xf/kanforge/blob/main/PLAN.md).
+Everything below was built in phases 0–8 of [ROADMAP.md](https://github.com/fx-xf/kanforge/blob/main/ROADMAP.md).
 
 - **Bases**: 26 basis families with exact derivatives of any order, trainable
   basis parameters per input, per group or per layer.

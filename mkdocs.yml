@@ -1,14 +1,25 @@
 site_name: kanforge
 site_description: Kolmogorov–Arnold Networks for every backend
+site_url: https://fx-xf.github.io/kanforge/
 repo_url: https://github.com/fx-xf/kanforge
+repo_name: fx-xf/kanforge
 theme:
   name: material
   features: [navigation.sections, navigation.top, content.code.copy]
+  font:
+    text: Inter Tight
+    code: JetBrains Mono
   palette:
-    - scheme: default
-      toggle: {icon: material/brightness-7, name: Dark mode}
     - scheme: slate
+      primary: black
+      accent: deep orange
       toggle: {icon: material/brightness-4, name: Light mode}
+    - scheme: default
+      primary: black
+      accent: deep orange
+      toggle: {icon: material/brightness-7, name: Dark mode}
+extra_css:
+  - stylesheets/extra.css
 nav:
   - Home: index.md
   - Installation: install.md
@@ -59,6 +70,8 @@ plugins:
             merge_init_into_class: true
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
   - tables
   - toc: {permalink: true}
   - pymdownx.superfences

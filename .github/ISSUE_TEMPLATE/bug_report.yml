@@ -1,0 +1,19 @@
+name: Bug report
+description: Something computes the wrong thing, crashes or is slower than it should be.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: A minimal script that reproduces it, and what you expected instead.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: env
+    attributes:
+      label: Environment
+      description: kanforge version, backend and device (e.g. 0.8.0, torch 2.6 on CUDA 12.4, RTX 3060).
+    validations:
+      required: true

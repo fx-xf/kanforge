@@ -1,11 +1,13 @@
 # Installation
 
 ```bash
-pip install kanforge            # NumPy reference only
-pip install "kanforge[torch]"   # + PyTorch layers (CUDA, ROCm, MPS, CPU)
+pip install "kanforge @ git+https://github.com/fx-xf/kanforge"          # NumPy reference only
+pip install "kanforge[torch] @ git+https://github.com/fx-xf/kanforge"   # + PyTorch layers (CUDA, ROCm, MPS, CPU)
 ```
 
-Optional extras, combine as needed (`pip install "kanforge[torch,export]"`):
+Once the package is on PyPI, `pip install "kanforge[torch]"` will do the same.
+
+Optional extras, combine as needed (`pip install "kanforge[torch,export] @ git+https://github.com/fx-xf/kanforge"`):
 
 | extra | adds |
 |---|---|

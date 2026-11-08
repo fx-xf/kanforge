@@ -1,5 +1,7 @@
 # Bases
 
+![The 26 bases](../assets/bases.svg){ .kf-hero }
+
 Every edge function is φ(x) = Σ_b c_b B_b(x; θ). A basis evaluates the B_b
 for arrays of NumPy, PyTorch, MLX or JAX alike, shape `(..., in)` →
 `(..., in, size)`, and their derivatives of any order:

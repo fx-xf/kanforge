@@ -1,5 +1,7 @@
 # Benchmarks
 
+![KAN vs MLP at equal FLOPs](assets/benchmark.svg){ .kf-hero }
+
 ## KAN vs MLP at equal FLOPs
 
 `benchmarks/fair_comparison.py`, following KANbeFair: same optimiser, steps

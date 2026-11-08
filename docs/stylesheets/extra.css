@@ -1,0 +1,38 @@
+@import url("https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&display=swap");
+
+:root {
+  --kf-amber: #FFC65C;
+  --kf-ember: #FF8A2E;
+  --kf-rose: #F2464F;
+  --kf-violet: #B23CF0;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-default-bg-color: #0E0E14;
+  --md-default-fg-color--light: #A19DA8;
+  --md-code-bg-color: #14141C;
+  --md-typeset-a-color: var(--kf-amber);
+}
+
+[data-md-color-scheme="default"] {
+  --md-typeset-a-color: #C2410C;
+}
+
+.md-header, .md-tabs { background: #08080C; }
+
+.md-typeset h1, .md-typeset h2 {
+  font-family: "Instrument Serif", Georgia, serif;
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+.md-typeset h1 { font-size: 2.6rem; }
+.md-typeset h2 { font-size: 1.8rem; }
+
+.md-typeset h1 em, .md-header__topic em {
+  background: linear-gradient(90deg, #FFF3D1, var(--kf-amber), var(--kf-ember), var(--kf-rose));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.md-typeset .kf-hero { border-radius: 18px; margin: 0 0 1.5rem; }

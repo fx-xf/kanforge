@@ -30,7 +30,7 @@ classifiers = [
 
 [project.urls]
 Homepage = "https://github.com/fx-xf/kanforge"
-Documentation = "https://github.com/fx-xf/kanforge/tree/main/docs"
+Documentation = "https://fx-xf.github.io/kanforge/"
 Changelog = "https://github.com/fx-xf/kanforge/blob/main/CHANGELOG.md"
 Issues = "https://github.com/fx-xf/kanforge/issues"
 
@@ -50,7 +50,7 @@ docs = ["mkdocs-material>=9.5", "mkdocstrings[python]>=0.25"]
 packages = ["kanforge"]
 
 [tool.hatch.build.targets.sdist]
-include = ["kanforge", "tests", "examples", "benchmarks", "docs", "mkdocs.yml", "README.md", "CHANGELOG.md", "PLAN.md", "BENCHMARKS.md", "LICENSE", "NOTICE"]
+include = ["kanforge", "tests", "examples", "benchmarks", "docs", "mkdocs.yml", "README.md", "CHANGELOG.md", "ROADMAP.md", "BENCHMARKS.md", "LICENSE", "NOTICE"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

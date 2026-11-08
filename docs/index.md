@@ -1,4 +1,13 @@
+---
+title: kanforge
+hide: [navigation, toc]
+---
+
+<style>.md-content__inner h1{display:none}</style>
+
 # kanforge
+
+![kanforge](assets/hero.svg){ .kf-hero }
 
 Kolmogorov–Arnold Networks (KANs) for every backend. A KAN layer learns a
 one-dimensional function on every edge, y_o = Σ_i φ_oi(x_i), instead of a
